@@ -118,6 +118,14 @@ class Collector:
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": USER_AGENT})
+        retries = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=("GET",),
+        )
+        self.session.mount("https://", HTTPAdapter(max_retries=retries))
+        self.session.mount("http://", HTTPAdapter(max_retries=retries))
 
     def get(self, url: str) -> str:
         response = self.session.get(url, timeout=self.timeout)
@@ -130,6 +138,14 @@ class Collector:
         for page in range(1, pages + 1):
             listing_url = start_url if page == 1 else urljoin(start_url.rstrip("/") + "/", f"page/{page}/")
             logging.info("Lendo página %s: %s", page, listing_url)
+            try:
+                links = extract_article_links(self.get(listing_url), listing_url)
+            except requests.RequestException as error:
+                logging.warning("Não foi possível ler a listagem %s: %s", listing_url, error)
+                continue
+            if not links:
+                logging.warning("Nenhum link de notícia encontrado em %s", listing_url)
+            for url in links:
             for url in extract_article_links(self.get(listing_url), listing_url):
                 if url in seen_urls:
                     continue

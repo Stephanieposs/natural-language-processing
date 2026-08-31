@@ -51,3 +51,27 @@ pytest -q
 ```
 
 Os testes usam HTML local e não fazem requisições ao site.
+
+## Análise exploratória e revisão manual
+
+Depois de uma coleta piloto, gere o relatório com:
+
+```bash
+python analyze.py
+```
+
+O diretório `reports/` receberá o resumo geral em JSON, distribuições por categoria
+e mês em CSV, uma lista de problemas de qualidade, uma amostra para conferência
+manual e gráficos SVG. Abra `reports/review_sample.csv`, compare cada item com sua
+URL e preencha `review_status` (`ok` ou `erro`) e `review_notes`. Os SVGs não exigem
+Matplotlib e podem ser abertos diretamente no navegador.
+
+Fluxo inicial recomendado:
+
+```bash
+python scraper.py --pages 10 --delay 1.5 --minimum-words 20
+python analyze.py --minimum-words 20 --sample-size 20
+```
+
+Se a coleta for interrompida por rede, execute novamente: o histórico incremental
+evita a perda das notícias que já tenham sido salvas em uma execução concluída.
