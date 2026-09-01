@@ -75,3 +75,26 @@ python analyze.py --minimum-words 20 --sample-size 20
 
 Se a coleta for interrompida por rede, execute novamente: o histórico incremental
 evita a perda das notícias que já tenham sido salvas em uma execução concluída.
+
+## Pré-processamento para PLN
+
+Após revisar a qualidade da coleta, crie uma representação derivada para modelos:
+
+```bash
+python preprocess.py
+```
+
+O comando lê `data/processed/noticias.jsonl` e grava
+`data/processed/noticias_nlp.jsonl`. Os campos originais são preservados e quatro
+campos são acrescentados: `text_normalized`, `tokens`,
+`tokens_without_stopwords` e `text_for_model`. A normalização mantém acentos, une
+título e conteúdo e não aplica stemming ou lematização automaticamente.
+
+Use `--keep-stopwords` quando a tarefa precisar preservar todas as palavras:
+
+```bash
+python preprocess.py --keep-stopwords
+```
+
+Manter as duas representações permite comparar abordagens sem perder o texto
+original, algo importante para NER, sumarização e apresentação das fontes.

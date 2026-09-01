@@ -18,6 +18,8 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 BASE_URL = "https://blogdojaime.com.br/"
 USER_AGENT = "NLP-Blumenau-Academic-Collector/1.0 (educational use)"
