@@ -13,7 +13,7 @@ import unicodedata
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Any, Iterable, Iterator
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -21,8 +21,14 @@ from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-BASE_URL = "https://blogdojaime.com.br/"
-USER_AGENT = "NLP-Blumenau-Academic-Collector/1.0 (educational use)"
+BASE_URL = "https://blogdojaime.com.br/noticias/"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+DEFAULT_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Connection": "close",
+}
 SPACE_RE = re.compile(r"\s+")
 ARTICLE_FIELDS = ("title", "published_at", "category", "content", "url", "collected_at")
 
@@ -59,6 +65,32 @@ def normalize_for_hash(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
 
+
+def _iter_json_objects(value: Any) -> Iterator[dict[str, Any]]:
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _iter_json_objects(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _iter_json_objects(child)
+
+
+def _json_ld_first(soup: BeautifulSoup, *keys: str) -> str:
+    for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        try:
+            data = json.loads(script.string or "")
+        except json.JSONDecodeError:
+            continue
+        for item in _iter_json_objects(data):
+            for key in keys:
+                value = item.get(key)
+                if isinstance(value, list) and value:
+                    value = value[0]
+                if value:
+                    return clean_text(str(value))
+    return ""
+
 def _first_text(soup: BeautifulSoup, selectors: Iterable[str]) -> str:
     for selector in selectors:
         node = soup.select_one(selector)
@@ -71,12 +103,17 @@ def parse_article(html: str, url: str, collected_at: str | None = None) -> Artic
     """Extrai os campos, aceitando os layouts WordPress mais comuns do portal."""
     soup = BeautifulSoup(html, "html.parser")
     title = _first_text(soup, ("h1.entry-title", "article h1", "main h1", "h1"))
-    content_node = next(
-        (soup.select_one(s) for s in (".entry-content", ".post-content", "article") if soup.select_one(s)),
-        None,
+    content_selectors = (
+        ".entry-content",
+        ".post-content",
+        ".elementor-widget-theme-post-content",
+        "article",
     )
+    content_node = next((soup.select_one(s) for s in content_selectors if soup.select_one(s)), None)
     if content_node:
-        for unwanted in content_node.select("script, style, nav, form, .sharedaddy, .social-share, .post-tags"):
+        for unwanted in content_node.select(
+            "script, style, nav, form, iframe, noscript, .sharedaddy, .social-share, .post-tags"
+        ):
             unwanted.decompose()
         paragraphs = [clean_text(p.get_text(" ", strip=True)) for p in content_node.select("p")]
         content = "\n".join(p for p in paragraphs if p)
@@ -86,10 +123,23 @@ def parse_article(html: str, url: str, collected_at: str | None = None) -> Artic
         content = ""
 
     time_node = soup.select_one("time[datetime]")
-    published = clean_text(time_node.get("datetime", "")) if time_node else _first_text(
-        soup, ("time", ".entry-date", ".post-date")
+    published = _json_ld_first(soup, "datePublished", "dateModified")
+    if not published:
+        published = clean_text(time_node.get("datetime", "")) if time_node else _first_text(
+            soup, ("time", ".entry-date", ".post-date", ".elementor-post-info__item--type-date")
+        )
+    category = _json_ld_first(soup, "articleSection") or _first_text(
+        soup,
+        (
+            ".cat-links a",
+            "a[rel='category tag']",
+            ".post-category a",
+            ".post-content-blog a[href*='/category/']",
+            ".elementor-location-single a[href*='/category/']",
+            ".elementor-post-info__terms-list a",
+            ".elementor-post-info__item--type-terms a",
+        ),
     )
-    category = _first_text(soup, (".cat-links a", "a[rel='category tag']", ".post-category a"))
     if not title:
         raise ValueError(f"Título não encontrado em {url}")
     return Article(
@@ -102,14 +152,34 @@ def parse_article(html: str, url: str, collected_at: str | None = None) -> Artic
     )
 
 
+def _is_probable_article_url(link: str, page_url: str) -> bool:
+    parsed_link = urlparse(link)
+    expected_host = urlparse(page_url).netloc.removeprefix("www.")
+    link_host = parsed_link.netloc.removeprefix("www.")
+    if link_host != expected_host:
+        return False
+
+    path = parsed_link.path.strip("/")
+    if not path or "/" in path:
+        return False
+    if path in {"noticias", "contato", "anuncie-conosco"}:
+        return False
+    if path.startswith(("category", "tag", "author", "page", "wp-")):
+        return False
+    return not re.search(r"\.(?:jpe?g|png|gif|webp|svg|pdf|zip)$", path, re.IGNORECASE)
+
+
 def extract_article_links(html: str, page_url: str) -> list[str]:
     soup = BeautifulSoup(html, "html.parser")
-    selectors = "article h2 a, article h3 a, h2.entry-title a, h3.entry-title a"
+    selectors = (
+        "article h1 a, article h2 a, article h3 a, h1.entry-title a, "
+        "h2.entry-title a, h3.entry-title a, main h1 a, main h2 a, main h3 a"
+    )
     links: list[str] = []
-    expected_host = urlparse(page_url).netloc.removeprefix("www.")
-    for node in soup.select(selectors):
-        link = urljoin(page_url, node.get("href", "")).split("#", 1)[0]
-        if urlparse(link).netloc.removeprefix("www.") == expected_host and link not in links:
+    candidates = [*soup.select(selectors), *soup.select("main a[href], article a[href], a[href]")]
+    for node in candidates:
+        link = urljoin(page_url, node.get("href", "")).split("#", 1)[0].rstrip("/") + "/"
+        if _is_probable_article_url(link, page_url) and link not in links:
             links.append(link)
     return links
 
@@ -119,7 +189,7 @@ class Collector:
         self.delay = delay
         self.timeout = timeout
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": USER_AGENT})
+        self.session.headers.update(DEFAULT_HEADERS)
         retries = Retry(
             total=3,
             backoff_factor=1,
@@ -148,7 +218,6 @@ class Collector:
             if not links:
                 logging.warning("Nenhum link de notícia encontrado em %s", listing_url)
             for url in links:
-            for url in extract_article_links(self.get(listing_url), listing_url):
                 if url in seen_urls:
                     continue
                 seen_urls.add(url)
