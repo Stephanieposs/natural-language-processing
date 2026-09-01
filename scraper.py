@@ -148,6 +148,7 @@ class Collector:
             if not links:
                 logging.warning("Nenhum link de notícia encontrado em %s", listing_url)
             for url in links:
+            for url in extract_article_links(self.get(listing_url), listing_url):
                 if url in seen_urls:
                     continue
                 seen_urls.add(url)
