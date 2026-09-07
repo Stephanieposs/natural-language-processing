@@ -11,14 +11,30 @@ from pathlib import Path
 TOKEN_RE = re.compile(r"[^\W\d_]+(?:[-'][^\W\d_]+)*|\d+(?:[.,]\d+)*", re.UNICODE)
 SPACE_RE = re.compile(r"\s+")
 
-# Lista pequena e explícita para manter o processamento reproduzível e sem downloads.
-PORTUGUESE_STOPWORDS = frozenset(
-    "a ao aos aquela aquelas aquele aqueles aquilo as até com como da das de dela delas "
-    "dele deles depois do dos e ela elas ele eles em entre era eram essa essas esse esses "
-    "esta estas este estes eu foi foram há isso isto já lhe lhes mais mas me mesmo minha "
-    "minhas meu meus muito na nas nem no nos nós o os ou para pela pelas pelo pelos por "
-    "qual quando que quem se sem seu seus sua suas também te tem têm um uma você vocês".split()
-)
+# Lista explícita e sem downloads, para manter o processamento reproduzível.
+# Base: stopwords de português do NLTK (artigos, preposições, pronomes e formas
+# dos verbos ser/estar/ter/haver), acrescida de contrações frequentes em textos
+# jornalísticos (nesta, neste, desta, deste...). "não" está incluído como no NLTK;
+# tarefas sensíveis à negação devem usar o campo `tokens`, que preserva tudo.
+_NLTK_PORTUGUESE = """
+a à ao aos aquela aquelas aquele aqueles aquilo as às até com como da das de dela delas
+dele deles depois do dos e é ela elas ele eles em entre era eram éramos essa essas esse
+esses esta está estamos estão estar estas estava estavam estávamos este esteja estejam
+estejamos estes esteve estive estivemos estiver estivera estiveram estivéramos estiverem
+estivermos estivesse estivessem estivéssemos estou eu foi fomos for fora foram fôramos
+forem formos fosse fossem fôssemos fui há haja hajam hajamos hão havemos haver hei houve
+houvemos houver houvera houverá houveram houvéramos houverão houverei houverem houveremos
+houveria houveriam houveríamos houvermos houvesse houvessem houvéssemos isso isto já lhe
+lhes mais mas me mesmo meu meus minha minhas muito na não nas nem no nos nós nossa nossas
+nosso nossos num numa o os ou para pela pelas pelo pelos por qual quando que quem são se
+seja sejam sejamos sem ser será serão serei seremos seria seriam seríamos seu seus só
+somos sou sua suas também te tem tém temos tenha tenham tenhamos tenho terá terão terei
+teremos teria teriam teríamos teu teus teve tinha tinham tínhamos tive tivemos tiver
+tivera tiveram tivéramos tiverem tivermos tivesse tivessem tivéssemos tu tua tuas um uma
+você vocês vos
+"""
+_NEWS_CONTRACTIONS = "nesta neste nestas nestes nessa nesse nessas nesses desta deste destas destes dessa desse dessas desses naquela naquele daquela daquele nums numas"
+PORTUGUESE_STOPWORDS = frozenset(f"{_NLTK_PORTUGUESE} {_NEWS_CONTRACTIONS}".split())
 
 
 def normalize_text(value: str, lowercase: bool = True) -> str:

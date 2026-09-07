@@ -295,12 +295,18 @@ def main() -> None:
     parser.add_argument("--delay", type=float, default=1.0, help="Intervalo entre requisições, em segundos")
     parser.add_argument("--minimum-words", type=int, default=20, help="Descartar textos menores que este limite")
     parser.add_argument("--output", type=Path, default=Path("data/processed/noticias.jsonl"))
+    parser.add_argument(
+        "--raw",
+        type=Path,
+        default=Path("data/raw/noticias.jsonl"),
+        help="Histórico bruto incremental; use um arquivo distinto por coleta paralela",
+    )
     args = parser.parse_args()
     if args.pages < 1 or args.delay < 0 or args.minimum_words < 0:
         parser.error("pages deve ser positivo; delay e minimum-words não podem ser negativos")
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    raw_path = Path("data/raw/noticias.jsonl")
+    raw_path = args.raw
     previous = read_jsonl(raw_path)
     collected = list(Collector(args.delay).collect(args.url, args.pages))
     complete = merge_by_url(previous, collected)

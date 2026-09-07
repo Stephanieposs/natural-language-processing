@@ -1,7 +1,7 @@
 import csv
 import json
 
-from analyze import describe, generate, parse_date, select_sample
+from analyze import describe, generate, parse_date, select_sample, top_terms, vocabulary_size
 
 
 def record(index, category="Notícias", words=3):
@@ -45,8 +45,22 @@ def test_generate_writes_all_report_artifacts(tmp_path):
     assert summary["removed_during_processing"] == 1
     assert {path.relative_to(output).as_posix() for path in output.rglob("*") if path.is_file()} == {
         "summary.json", "category_distribution.csv", "news_by_month.csv",
-        "quality_issues.csv", "review_sample.csv", "figures/categories.svg",
-        "figures/news_by_month.svg",
+        "quality_issues.csv", "review_sample.csv", "top_terms.csv",
+        "figures/categories.svg", "figures/news_by_month.svg",
     }
+    assert summary["processed"]["vocabulary_size"] == 2  # "notícia" e "palavra"
     with (output / "review_sample.csv").open(encoding="utf-8") as stream:
         assert list(csv.DictReader(stream))[0]["review_status"] == ""
+
+
+def test_top_terms_ignore_stopwords_and_numbers_and_group_by_category():
+    records = [
+        {"title": "Chuva forte em Blumenau", "content": "A chuva alagou 3 ruas de Blumenau.", "category": "Tempo"},
+        {"title": "Acidente na BR-470", "content": "O acidente não deixou feridos em 2026.", "category": "Ocorrências"},
+    ]
+    result = top_terms(records, size=2)
+    assert list(result) == ["geral", "Tempo", "Ocorrências"]
+    assert result["geral"][0] in {("chuva", 2), ("blumenau", 2), ("acidente", 2)}
+    assert result["Tempo"] == [("chuva", 2), ("blumenau", 2)]
+    assert all(not term[0].isdigit() and term not in {"a", "de", "em", "não", "o"} for terms in result.values() for term, _ in terms)
+    assert vocabulary_size(records) == len({"chuva", "forte", "blumenau", "alagou", "ruas", "acidente", "br-470", "deixou", "feridos"})

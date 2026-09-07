@@ -17,8 +17,16 @@ def test_preprocess_preserves_original_fields_and_builds_model_text():
     assert result["title"] == original["title"]
     assert result["content"] == original["content"]
     assert result["tokens"] == ["evento", "no", "centro", "a", "festa", "será", "em", "blumenau"]
-    assert result["tokens_without_stopwords"] == ["evento", "centro", "festa", "será", "blumenau"]
-    assert result["text_for_model"] == "evento centro festa será blumenau"
+    assert result["tokens_without_stopwords"] == ["evento", "centro", "festa", "blumenau"]
+    assert result["text_for_model"] == "evento centro festa blumenau"
+
+
+def test_stopword_list_covers_verb_forms_and_news_contractions():
+    from preprocess import PORTUGUESE_STOPWORDS
+
+    assert {"será", "está", "foram", "nesta", "deste", "não"} <= PORTUGUESE_STOPWORDS
+    assert {"blumenau", "chuva", "acidente"}.isdisjoint(PORTUGUESE_STOPWORDS)
+    assert len(PORTUGUESE_STOPWORDS) > 200
 
 
 def test_preprocess_file_writes_jsonl_atomically(tmp_path):

@@ -12,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
+from preprocess import PORTUGUESE_STOPWORDS, normalize_text, tokenize
+
 REQUIRED_FIELDS = ("title", "published_at", "category", "content", "url")
 
 
@@ -77,6 +79,31 @@ def describe(records: list[dict], minimum_words: int) -> dict:
     }
 
 
+def content_tokens(record: dict) -> list[str]:
+    """Tokens de título + conteúdo, minúsculos, sem stopwords e sem números."""
+    text = normalize_text(f"{record.get('title', '')} {record.get('content', '')}")
+    return [t for t in tokenize(text) if t not in PORTUGUESE_STOPWORDS and not t[0].isdigit() and len(t) > 1]
+
+
+def top_terms(records: list[dict], size: int = 30) -> dict[str, list[tuple[str, int]]]:
+    """Termos mais frequentes no geral e por categoria; a chave "geral" vem primeiro."""
+    overall: Counter = Counter()
+    by_category: dict[str, Counter] = {}
+    for record in records:
+        tokens = content_tokens(record)
+        overall.update(tokens)
+        category = str(record.get("category", "")).strip() or "Sem categoria"
+        by_category.setdefault(category, Counter()).update(tokens)
+    result = {"geral": overall.most_common(size)}
+    for category, counter in sorted(by_category.items(), key=lambda item: -sum(item[1].values())):
+        result[category] = counter.most_common(size)
+    return result
+
+
+def vocabulary_size(records: list[dict]) -> int:
+    return len({token for record in records for token in content_tokens(record)})
+
+
 def write_csv(rows: Iterable[dict], destination: Path, fields: tuple[str, ...]) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("w", encoding="utf-8", newline="") as stream:
@@ -122,11 +149,14 @@ def write_svg_bars(values: dict[str, int], destination: Path, title: str) -> Non
     destination.write_text("\n".join(elements), encoding="utf-8")
 
 
-def generate(raw_source: Path, processed_source: Path, output: Path, minimum_words: int, sample_size: int) -> dict:
+def generate(
+    raw_source: Path, processed_source: Path, output: Path, minimum_words: int, sample_size: int, top_size: int = 30
+) -> dict:
     raw = load_records(raw_source)
     processed = load_records(processed_source)
     raw_summary = describe(raw, minimum_words)
     processed_summary = describe(processed, minimum_words)
+    processed_summary["vocabulary_size"] = vocabulary_size(processed)
     summary = {
         "generated_at": datetime.now().astimezone().isoformat(),
         "raw": raw_summary,
@@ -161,6 +191,14 @@ def generate(raw_source: Path, processed_source: Path, output: Path, minimum_wor
         for r in select_sample(processed, sample_size)
     ]
     write_csv(sample, output / "review_sample.csv", ("title", "published_at", "category", "word_count", "url", "review_status", "review_notes"))
+    write_csv(
+        (
+            {"scope": scope, "rank": rank, "term": term, "count": count}
+            for scope, terms in top_terms(processed, top_size).items()
+            for rank, (term, count) in enumerate(terms, 1)
+        ),
+        output / "top_terms.csv", ("scope", "rank", "term", "count"),
+    )
     write_svg_bars(processed_summary["categories"], output / "figures/categories.svg", "Notícias por categoria")
     write_svg_bars(dict(sorted(months.items())), output / "figures/news_by_month.svg", "Notícias por mês")
     return summary
@@ -173,10 +211,11 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("reports"))
     parser.add_argument("--minimum-words", type=int, default=20)
     parser.add_argument("--sample-size", type=int, default=20)
+    parser.add_argument("--top-terms", type=int, default=30, help="Termos mais frequentes por categoria")
     args = parser.parse_args()
-    if args.minimum_words < 0 or args.sample_size < 0:
-        parser.error("minimum-words e sample-size não podem ser negativos")
-    summary = generate(args.raw, args.processed, args.output, args.minimum_words, args.sample_size)
+    if args.minimum_words < 0 or args.sample_size < 0 or args.top_terms < 0:
+        parser.error("minimum-words, sample-size e top-terms não podem ser negativos")
+    summary = generate(args.raw, args.processed, args.output, args.minimum_words, args.sample_size, args.top_terms)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
