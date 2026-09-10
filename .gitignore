@@ -1,8 +1,8 @@
 __pycache__/
-.pytest_cache/
 .venv/
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-reports/
+.ipynb_checkpoints/
+
+# A base coletada e os relatórios não vão para o repositório:
+# são grandes e podem ser gerados de novo com os scripts.
+dados/
+relatorios/
