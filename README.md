@@ -1,100 +1,72 @@
-# Notícias locais de Blumenau — coleta para PLN
+# Noticias de Blumenau - projeto de PLN
 
-Projeto da Etapa Prática 1 de Processamento de Linguagem Natural. O coletor percorre
-páginas do **Blog do Jaime**, extrai título, data, categoria, texto e URL, preserva
-uma cópia bruta e gera uma base limpa em JSONL e CSV.
+O projeto coleta as noticias das 50 paginas mais recentes do Blog do Jaime,
+remove registros repetidos ou muito curtos, gera uma analise exploratoria e
+aplica as etapas basicas de Processamento de Linguagem Natural.
 
-## Instalação e uso
+Todo o fluxo usado para entrega esta no arquivo `projeto_pln.py`.
 
-```bash
+## Instalacao
+
+No Windows PowerShell:
+
+```powershell
 python -m venv .venv
-source .venv/bin/activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python scraper.py --pages 5 --delay 1.5 --minimum-words 20
+python -m nltk.downloader punkt punkt_tab stopwords rslp
+python -m spacy download pt_core_news_sm
 ```
 
-Por padrão, os resultados são gravados em:
+## Execucao
 
-- `data/raw/noticias.jsonl`: tudo o que foi coletado, para rastreabilidade;
-- `data/processed/noticias.jsonl`: textos únicos e acima do limite mínimo;
-- `data/processed/noticias.csv`: a mesma base em formato tabular.
+Execute somente:
 
-As execuções são **incrementais**: antes de coletar, o programa lê
-`data/raw/noticias.jsonl`. Notícias com URLs novas são acrescentadas ao histórico;
-quando uma URL já existe, seu registro é atualizado. Depois, a base processada é
-recalculada a partir de todo esse histórico. Assim, executar o scraper amanhã não
-apaga as notícias salvas hoje. As gravações usam um arquivo temporário para evitar
-deixar a base incompleta caso a escrita seja interrompida.
-
-Cada registro contém `title`, `published_at`, `category`, `content`, `url`,
-`collected_at`, `content_hash` e `word_count`. É possível usar uma categoria como
-ponto de partida com `--url URL_DA_CATEGORIA`, embora a página geral produza uma
-base mais diversa.
-
-## Critérios de preparação
-
-- A deduplicação usa SHA-256 do título e conteúdo após conversão para minúsculas,
-  remoção de acentos e pontuação. A URL não faz parte da chave, portanto uma
-  republicação em outra URL é identificada.
-- Textos curtos são mantidos na base bruta e removidos apenas da base processada.
-- O HTML é descartado, mas pontuação e capitalização do texto são preservadas. A
-  tokenização e a remoção de stopwords devem ser feitas depois, de acordo com a
-  tarefa de PLN, evitando perda prematura de informação.
-- O intervalo configurável entre requisições reduz a carga sobre o portal. Antes
-  de uma coleta ampla, confira os termos de uso e o `robots.txt` da fonte.
-
-## Testes
-
-```bash
-pip install -r requirements-dev.txt
-pytest -q
+```powershell
+python projeto_pln.py
 ```
 
-Os testes usam HTML local e não fazem requisições ao site.
+O programa realiza, nesta ordem:
 
-## Análise exploratória e revisão manual
+1. coleta das 50 paginas;
+2. remocao de duplicatas e textos com menos de 20 palavras;
+3. analise da quantidade, categorias, datas e qualidade dos textos;
+4. tokenizacao;
+5. normalizacao;
+6. remocao de stopwords;
+7. lematizacao;
+8. stemming;
+9. exportacao dos resultados.
 
-Depois de uma coleta piloto, gere o relatório com:
+Durante a coleta, o arquivo bruto e atualizado ao final de cada pagina. Assim,
+uma interrupcao nao apaga as paginas que ja foram coletadas.
 
-```bash
-python analyze.py
-```
+## Arquivos gerados
 
-O diretório `reports/` receberá o resumo geral em JSON, distribuições por categoria
-e mês em CSV, uma lista de problemas de qualidade, uma amostra para conferência
-manual e gráficos SVG. Abra `reports/review_sample.csv`, compare cada item com sua
-URL e preencha `review_status` (`ok` ou `erro`) e `review_notes`. Os SVGs não exigem
-Matplotlib e podem ser abertos diretamente no navegador.
+- `data/raw/noticias.jsonl`: noticias coletadas nas 50 paginas;
+- `data/processed/noticias.jsonl`: noticias validas;
+- `data/processed/noticias.csv`: noticias validas em CSV;
+- `data/processed/noticias_nlp.jsonl`: noticias com as etapas de PLN;
+- `data/processed/noticias_nlp.csv`: dados de PLN em CSV;
+- `reports/summary.json`: resumo da base;
+- `reports/category_distribution.csv`: quantidade por categoria;
+- `reports/news_by_month.csv`: quantidade por mes;
+- `reports/quality_issues.csv`: registros com problemas;
+- `reports/review_sample.csv`: amostra para revisao manual.
 
-Fluxo inicial recomendado:
+## Campos de PLN
 
-```bash
-python scraper.py --pages 10 --delay 1.5 --minimum-words 20
-python analyze.py --minimum-words 20 --sample-size 20
-```
+Cada noticia processada possui:
 
-Se a coleta for interrompida por rede, execute novamente: o histórico incremental
-evita a perda das notícias que já tenham sido salvas em uma execução concluída.
+- `texto_bruto`;
+- `tokens`;
+- `tokens_normalizados`;
+- `tokens_sem_stopwords`;
+- `lemas`;
+- `stems`.
 
-## Pré-processamento para PLN
+As configuracoes principais ficam no inicio de `projeto_pln.py`:
 
-Após revisar a qualidade da coleta, crie uma representação derivada para modelos:
-
-```bash
-python preprocess.py
-```
-
-O comando lê `data/processed/noticias.jsonl` e grava
-`data/processed/noticias_nlp.jsonl`. Os campos originais são preservados e quatro
-campos são acrescentados: `text_normalized`, `tokens`,
-`tokens_without_stopwords` e `text_for_model`. A normalização mantém acentos, une
-título e conteúdo e não aplica stemming ou lematização automaticamente.
-
-Use `--keep-stopwords` quando a tarefa precisar preservar todas as palavras:
-
-```bash
-python preprocess.py --keep-stopwords
-```
-
-Manter as duas representações permite comparar abordagens sem perder o texto
-original, algo importante para NER, sumarização e apresentação das fontes.
+- `TOTAL_PAGES = 50`;
+- `DELAY_SECONDS = 1.0`;
+- `MINIMUM_WORDS = 20`.
