@@ -4,11 +4,14 @@ Antes da primeira execucao, instale as dependencias descritas no README.md.
 Depois, execute apenas: python projeto_pln.py
 """
 
+import argparse
 import csv
 import hashlib
 import json
 import re
 import statistics
+import subprocess
+import sys
 import time
 import unicodedata
 from collections import Counter
@@ -27,17 +30,26 @@ from nltk.tokenize import word_tokenize
 
 # Configuracoes principais
 BASE_URL = "https://blogdojaime.com.br/noticias/"
-TOTAL_PAGES = 50
+INITIAL_PAGES = 50
+UPDATE_PAGES = 10
 DELAY_SECONDS = 1.0
 MINIMUM_WORDS = 20
 SAMPLE_SIZE = 20
+RECENT_DAYS = 7
+TASK_NAME = "ProjetoPLNNoticiasBlumenau"
+TASK_TIME = "22:00"
 
-RAW_PATH = Path("data/raw/noticias.jsonl")
-PROCESSED_PATH = Path("data/processed/noticias.jsonl")
-PROCESSED_CSV_PATH = Path("data/processed/noticias.csv")
-NLP_JSONL_PATH = Path("data/processed/noticias_nlp.jsonl")
-NLP_CSV_PATH = Path("data/processed/noticias_nlp.csv")
-REPORTS_PATH = Path("reports")
+PROJECT_DIR = Path(__file__).resolve().parent
+RAW_PATH = PROJECT_DIR / "data/raw/noticias.jsonl"
+PROCESSED_PATH = PROJECT_DIR / "data/processed/noticias.jsonl"
+PROCESSED_CSV_PATH = PROJECT_DIR / "data/processed/noticias.csv"
+NLP_JSONL_PATH = PROJECT_DIR / "data/processed/noticias_nlp.jsonl"
+NLP_CSV_PATH = PROJECT_DIR / "data/processed/noticias_nlp.csv"
+RECENT_JSONL_PATH = PROJECT_DIR / "data/processed/noticias_recentes_7_dias.jsonl"
+RECENT_CSV_PATH = PROJECT_DIR / "data/processed/noticias_recentes_7_dias.csv"
+PREVIOUS_JSONL_PATH = PROJECT_DIR / "data/processed/noticias_anteriores.jsonl"
+PREVIOUS_CSV_PATH = PROJECT_DIR / "data/processed/noticias_anteriores.csv"
+REPORTS_PATH = PROJECT_DIR / "reports"
 
 HEADERS = {
     "User-Agent": (
@@ -202,21 +214,36 @@ def write_jsonl(records, path):
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def collect_articles():
+def read_jsonl(path):
+    if not path.exists():
+        return []
+    with path.open(encoding="utf-8") as file:
+        return [json.loads(line) for line in file if line.strip()]
+
+
+def merge_by_url(previous_articles, collected_articles):
+    """Acrescenta URLs novas e atualiza as URLs que ja estavam salvas."""
+    articles_by_url = {article["url"]: article for article in previous_articles}
+    articles_by_url.update({article["url"]: article for article in collected_articles})
+    return list(articles_by_url.values())
+
+
+def collect_articles(total_pages, previous_articles=None):
     session = requests.Session()
     session.headers.update(HEADERS)
     articles = []
+    previous_articles = previous_articles or []
     seen_urls = set()
     failed_pages = []
     failed_articles = 0
 
-    for page in range(1, TOTAL_PAGES + 1):
+    for page in range(1, total_pages + 1):
         page_url = listing_url(page)
         try:
             links = extract_article_links(download(session, page_url), page_url)
         except requests.RequestException as error:
             failed_pages.append(page)
-            print(f"Pagina {page:02d}/{TOTAL_PAGES}: erro na listagem ({error})", flush=True)
+            print(f"Pagina {page:02d}/{total_pages}: erro na listagem ({error})", flush=True)
             continue
 
         collected_on_page = 0
@@ -231,10 +258,11 @@ def collect_articles():
                 failed_articles += 1
                 print(f"  Erro em {url}: {error}", flush=True)
 
-        # A coleta parcial fica salva caso a execucao seja interrompida.
-        write_jsonl(articles, RAW_PATH)
+        # Na atualizacao, o checkpoint preserva o historico ja existente.
+        checkpoint = merge_by_url(previous_articles, articles)
+        write_jsonl(checkpoint, RAW_PATH)
         print(
-            f"Pagina {page:02d}/{TOTAL_PAGES}: {collected_on_page} noticias "
+            f"Pagina {page:02d}/{total_pages}: {collected_on_page} noticias "
             f"(total: {len(articles)})",
             flush=True,
         )
@@ -311,15 +339,27 @@ def describe(articles):
     }
 
 
-def generate_reports(raw_articles, processed_articles, failed_pages, failed_articles):
+def generate_reports(
+    raw_articles,
+    processed_articles,
+    failed_pages,
+    failed_articles,
+    pages_requested,
+    execution_mode,
+    new_articles,
+    updated_articles,
+):
     raw_summary = describe(raw_articles)
     processed_summary = describe(processed_articles)
     summary = {
         "generated_at": datetime.now().astimezone().isoformat(),
-        "pages_requested": TOTAL_PAGES,
-        "pages_collected": TOTAL_PAGES - len(failed_pages),
+        "execution_mode": execution_mode,
+        "pages_requested": pages_requested,
+        "pages_collected": pages_requested - len(failed_pages),
         "failed_pages": failed_pages,
         "failed_articles": failed_articles,
+        "new_articles": new_articles,
+        "updated_articles": updated_articles,
         "raw": raw_summary,
         "processed": processed_summary,
         "removed_during_processing": len(raw_articles) - len(processed_articles),
@@ -415,12 +455,129 @@ def processar_nlp(articles):
     NLP_JSONL_PATH.parent.mkdir(parents=True, exist_ok=True)
     resultado.to_json(NLP_JSONL_PATH, orient="records", lines=True, force_ascii=False)
     resultado.to_csv(NLP_CSV_PATH, index=False, encoding="utf-8")
-    return len(resultado)
+    return resultado
 
 
-def main():
-    print(f"1/3 - Coletando as ultimas {TOTAL_PAGES} paginas...", flush=True)
-    raw_articles, failed_pages, failed_articles = collect_articles()
+def summarize_period(name, dataframe):
+    dates = pd.to_datetime(dataframe["published_at"], errors="coerce", utc=True)
+    categories = Counter(dataframe["category"].fillna("Sem categoria"))
+    terms = Counter(
+        token
+        for tokens in dataframe["tokens_sem_stopwords"]
+        for token in tokens
+    )
+    return {
+        "period": name,
+        "start_date": dates.min().date().isoformat() if not dates.empty else "",
+        "end_date": dates.max().date().isoformat() if not dates.empty else "",
+        "articles": len(dataframe),
+        "average_words": round(dataframe["word_count"].mean(), 2) if len(dataframe) else 0,
+        "top_categories": "; ".join(
+            f"{category}: {count}" for category, count in categories.most_common(5)
+        ),
+        "top_terms": "; ".join(
+            f"{term}: {count}" for term, count in terms.most_common(10)
+        ),
+    }
+
+
+def create_temporal_samples(dataframe):
+    """Compara os sete dias mais recentes com o periodo anterior."""
+    dates = pd.to_datetime(dataframe["published_at"], errors="coerce", utc=True)
+    newest_date = dates.max().normalize()
+    cutoff = newest_date - pd.Timedelta(RECENT_DAYS - 1, unit="D")
+
+    recent = dataframe[dates >= cutoff].copy()
+    previous = dataframe[dates < cutoff].copy()
+
+    recent.to_json(RECENT_JSONL_PATH, orient="records", lines=True, force_ascii=False)
+    recent.to_csv(RECENT_CSV_PATH, index=False, encoding="utf-8")
+    previous.to_json(PREVIOUS_JSONL_PATH, orient="records", lines=True, force_ascii=False)
+    previous.to_csv(PREVIOUS_CSV_PATH, index=False, encoding="utf-8")
+
+    comparison = [
+        summarize_period("ultimos_7_dias", recent),
+        summarize_period("periodo_anterior", previous),
+    ]
+    write_csv(
+        comparison,
+        REPORTS_PATH / "temporal_comparison.csv",
+        [
+            "period",
+            "start_date",
+            "end_date",
+            "articles",
+            "average_words",
+            "top_categories",
+            "top_terms",
+        ],
+    )
+
+    return {
+        "reference_date": newest_date.date().isoformat(),
+        "recent_period_start": cutoff.date().isoformat(),
+        "recent_articles": len(recent),
+        "previous_articles": len(previous),
+    }
+
+
+def install_daily_schedule():
+    """Instala no Windows a atualizacao diaria das 10 paginas mais recentes."""
+    if sys.platform != "win32":
+        raise RuntimeError("O agendamento automatico esta configurado para Windows.")
+
+    python_path = Path(sys.executable).resolve()
+    script_path = Path(__file__).resolve()
+    task_command = f'"{python_path}" "{script_path}" --atualizar'
+    subprocess.run(
+        [
+            "schtasks",
+            "/Create",
+            "/TN",
+            TASK_NAME,
+            "/TR",
+            task_command,
+            "/SC",
+            "DAILY",
+            "/ST",
+            TASK_TIME,
+            "/F",
+        ],
+        check=True,
+    )
+    print(f"Agendamento instalado: todos os dias as {TASK_TIME}.")
+    print(f"Tarefa do Windows: {TASK_NAME}")
+
+
+def run_pipeline(update_mode=False):
+    previous_articles = read_jsonl(RAW_PATH) if update_mode else []
+    if update_mode and not previous_articles:
+        raise FileNotFoundError(
+            "Base inicial nao encontrada. Execute primeiro: python projeto_pln.py"
+        )
+
+    pages_requested = UPDATE_PAGES if update_mode else INITIAL_PAGES
+    execution_mode = "atualizacao_incremental" if update_mode else "coleta_inicial"
+    print(
+        f"1/3 - Coletando as ultimas {pages_requested} paginas "
+        f"({execution_mode})...",
+        flush=True,
+    )
+    collected_articles, failed_pages, failed_articles = collect_articles(
+        pages_requested,
+        previous_articles,
+    )
+
+    previous_urls = {article["url"] for article in previous_articles}
+    collected_urls = {article["url"] for article in collected_articles}
+    new_articles = len(collected_urls - previous_urls)
+    updated_articles = len(collected_urls & previous_urls)
+    raw_articles = (
+        merge_by_url(previous_articles, collected_articles)
+        if update_mode
+        else collected_articles
+    )
+
     processed_articles, duplicates, short_articles = remove_duplicates_and_short_articles(
         raw_articles
     )
@@ -434,23 +591,57 @@ def main():
         processed_articles,
         failed_pages,
         failed_articles,
+        pages_requested,
+        execution_mode,
+        new_articles,
+        updated_articles,
     )
 
     print("\n3/3 - Aplicando o pre-processamento de PLN...", flush=True)
-    nlp_count = processar_nlp(processed_articles)
+    nlp_dataframe = processar_nlp(processed_articles)
+    temporal_summary = create_temporal_samples(nlp_dataframe)
+    summary["temporal_comparison"] = temporal_summary
+    (REPORTS_PATH / "summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     print("\nProcessamento concluido.")
-    print(f"Paginas concluidas: {TOTAL_PAGES - len(failed_pages)}/{TOTAL_PAGES}")
+    print(f"Modo: {execution_mode}")
+    print(f"Paginas concluidas: {pages_requested - len(failed_pages)}/{pages_requested}")
     print(f"Noticias que falharam: {failed_articles}")
-    print(f"Noticias brutas: {len(raw_articles)}")
+    print(f"Noticias novas: {new_articles}")
+    print(f"Noticias existentes atualizadas: {updated_articles}")
+    print(f"Noticias brutas no historico: {len(raw_articles)}")
     print(f"Noticias duplicadas removidas: {duplicates}")
     print(f"Noticias curtas removidas: {short_articles}")
     print(f"Noticias validas: {len(processed_articles)}")
-    print(f"Noticias processadas para PLN: {nlp_count}")
+    print(f"Noticias processadas para PLN: {len(nlp_dataframe)}")
     print(
-        "Campos ausentes na base valida: "
-        f"{summary['processed']['missing_fields']}"
+        f"Recorte recente: {temporal_summary['recent_articles']} noticias; "
+        f"periodo anterior: {temporal_summary['previous_articles']} noticias"
     )
+    print(f"Campos ausentes na base valida: {summary['processed']['missing_fields']}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--atualizar",
+        action="store_true",
+        help="Coleta 10 paginas e atualiza a base existente sem duplicar URLs",
+    )
+    parser.add_argument(
+        "--agendar-diariamente",
+        action="store_true",
+        help="Cria uma tarefa do Windows para atualizar diariamente as 22:00",
+    )
+    args = parser.parse_args()
+
+    if args.agendar_diariamente:
+        install_daily_schedule()
+    else:
+        run_pipeline(update_mode=args.atualizar)
 
 
 if __name__ == "__main__":
