@@ -5,7 +5,6 @@ Depois, execute apenas: python projeto_pln.py
 """
 
 import argparse
-import csv
 import hashlib
 import json
 import re
@@ -20,12 +19,6 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import pandas as pd
-import requests
-import spacy
-from bs4 import BeautifulSoup
-from nltk.corpus import stopwords
-from nltk.stem import RSLPStemmer
-from nltk.tokenize import word_tokenize
 
 
 # Configuracoes principais
@@ -34,7 +27,6 @@ INITIAL_PAGES = 50
 UPDATE_PAGES = 10
 DELAY_SECONDS = 1.0
 MINIMUM_WORDS = 20
-SAMPLE_SIZE = 20
 RECENT_DAYS = 7
 TASK_NAME = "ProjetoPLNNoticiasBlumenau"
 TASK_TIME = "22:00"
@@ -42,13 +34,7 @@ TASK_TIME = "22:00"
 PROJECT_DIR = Path(__file__).resolve().parent
 RAW_PATH = PROJECT_DIR / "data/raw/noticias.jsonl"
 PROCESSED_PATH = PROJECT_DIR / "data/processed/noticias.jsonl"
-PROCESSED_CSV_PATH = PROJECT_DIR / "data/processed/noticias.csv"
 NLP_JSONL_PATH = PROJECT_DIR / "data/processed/noticias_nlp.jsonl"
-NLP_CSV_PATH = PROJECT_DIR / "data/processed/noticias_nlp.csv"
-RECENT_JSONL_PATH = PROJECT_DIR / "data/processed/noticias_recentes_7_dias.jsonl"
-RECENT_CSV_PATH = PROJECT_DIR / "data/processed/noticias_recentes_7_dias.csv"
-PREVIOUS_JSONL_PATH = PROJECT_DIR / "data/processed/noticias_anteriores.jsonl"
-PREVIOUS_CSV_PATH = PROJECT_DIR / "data/processed/noticias_anteriores.csv"
 REPORTS_PATH = PROJECT_DIR / "reports"
 
 HEADERS = {
@@ -60,16 +46,6 @@ HEADERS = {
     "Accept-Language": "pt-BR,pt;q=0.9",
 }
 
-ARTICLE_FIELDS = (
-    "title",
-    "published_at",
-    "category",
-    "content",
-    "url",
-    "collected_at",
-    "content_hash",
-    "word_count",
-)
 REQUIRED_FIELDS = ("title", "published_at", "category", "content", "url")
 
 
@@ -115,6 +91,8 @@ def json_ld_value(soup, keys):
 
 
 def parse_article(html, url):
+    from bs4 import BeautifulSoup
+
     soup = BeautifulSoup(html, "html.parser")
     title = first_text(soup, ["h1.entry-title", "article h1", "main h1", "h1"])
 
@@ -177,6 +155,8 @@ def is_article_url(url):
 
 
 def extract_article_links(html, page_url):
+    from bs4 import BeautifulSoup
+
     soup = BeautifulSoup(html, "html.parser")
     links = []
     for element in soup.select("a[href]"):
@@ -194,6 +174,8 @@ def listing_url(page):
 
 
 def download(session, url):
+    import requests
+
     """Faz ate tres tentativas para evitar perda por uma falha temporaria."""
     for attempt in range(1, 4):
         try:
@@ -229,6 +211,8 @@ def merge_by_url(previous_articles, collected_articles):
 
 
 def collect_articles(total_pages, previous_articles=None):
+    import requests
+
     session = requests.Session()
     session.headers.update(HEADERS)
     articles = []
@@ -290,14 +274,6 @@ def remove_duplicates_and_short_articles(articles):
             clean_articles.append(article)
 
     return clean_articles, duplicates, short_articles
-
-
-def write_csv(records, path, fieldnames):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(records)
 
 
 # 2. Analise exploratoria
@@ -371,49 +347,6 @@ def generate_reports(
         encoding="utf-8",
     )
 
-    category_rows = [
-        {"category": category, "count": count}
-        for category, count in processed_summary["categories"].items()
-    ]
-    write_csv(category_rows, REPORTS_PATH / "category_distribution.csv", ["category", "count"])
-
-    months = Counter(
-        date.strftime("%Y-%m")
-        for article in processed_articles
-        if (date := parse_date(article.get("published_at", "")))
-    )
-    month_rows = [{"month": month, "count": months[month]} for month in sorted(months)]
-    write_csv(month_rows, REPORTS_PATH / "news_by_month.csv", ["month", "count"])
-
-    issues = []
-    for article in raw_articles:
-        missing = ", ".join(field for field in REQUIRED_FIELDS if not article.get(field))
-        if missing or article.get("word_count", 0) < MINIMUM_WORDS:
-            issues.append(
-                {
-                    "url": article.get("url", ""),
-                    "missing_fields": missing,
-                    "word_count": article.get("word_count", 0),
-                }
-            )
-    write_csv(issues, REPORTS_PATH / "quality_issues.csv", ["url", "missing_fields", "word_count"])
-
-    sample = []
-    for article in processed_articles[:SAMPLE_SIZE]:
-        sample.append(
-            {
-                "title": article.get("title", ""),
-                "category": article.get("category", ""),
-                "url": article.get("url", ""),
-                "review_status": "",
-                "review_notes": "",
-            }
-        )
-    write_csv(
-        sample,
-        REPORTS_PATH / "review_sample.csv",
-        ["title", "category", "url", "review_status", "review_notes"],
-    )
     return summary
 
 
@@ -423,6 +356,11 @@ def normalizar_tokens(tokens_da_frase):
 
 
 def processar_nlp(articles):
+    import spacy
+    from nltk.corpus import stopwords
+    from nltk.stem import RSLPStemmer
+    from nltk.tokenize import word_tokenize
+
     stopwords_pt = set(stopwords.words("portuguese"))
     stemmer = RSLPStemmer()
     nlp = spacy.load("pt_core_news_sm")
@@ -454,7 +392,6 @@ def processar_nlp(articles):
 
     NLP_JSONL_PATH.parent.mkdir(parents=True, exist_ok=True)
     resultado.to_json(NLP_JSONL_PATH, orient="records", lines=True, force_ascii=False)
-    resultado.to_csv(NLP_CSV_PATH, index=False, encoding="utf-8")
     return resultado
 
 
@@ -490,34 +427,15 @@ def create_temporal_samples(dataframe):
     recent = dataframe[dates >= cutoff].copy()
     previous = dataframe[dates < cutoff].copy()
 
-    recent.to_json(RECENT_JSONL_PATH, orient="records", lines=True, force_ascii=False)
-    recent.to_csv(RECENT_CSV_PATH, index=False, encoding="utf-8")
-    previous.to_json(PREVIOUS_JSONL_PATH, orient="records", lines=True, force_ascii=False)
-    previous.to_csv(PREVIOUS_CSV_PATH, index=False, encoding="utf-8")
-
-    comparison = [
-        summarize_period("ultimos_7_dias", recent),
-        summarize_period("periodo_anterior", previous),
-    ]
-    write_csv(
-        comparison,
-        REPORTS_PATH / "temporal_comparison.csv",
-        [
-            "period",
-            "start_date",
-            "end_date",
-            "articles",
-            "average_words",
-            "top_categories",
-            "top_terms",
-        ],
-    )
-
     return {
         "reference_date": newest_date.date().isoformat(),
         "recent_period_start": cutoff.date().isoformat(),
         "recent_articles": len(recent),
         "previous_articles": len(previous),
+        "periods": [
+            summarize_period("ultimos_7_dias", recent),
+            summarize_period("periodo_anterior", previous),
+        ],
     }
 
 
@@ -559,7 +477,7 @@ def run_pipeline(update_mode=False):
     pages_requested = UPDATE_PAGES if update_mode else INITIAL_PAGES
     execution_mode = "atualizacao_incremental" if update_mode else "coleta_inicial"
     print(
-        f"1/3 - Coletando as ultimas {pages_requested} paginas "
+        f"1/4 - Coletando as ultimas {pages_requested} paginas "
         f"({execution_mode})...",
         flush=True,
     )
@@ -583,9 +501,8 @@ def run_pipeline(update_mode=False):
     )
     write_jsonl(raw_articles, RAW_PATH)
     write_jsonl(processed_articles, PROCESSED_PATH)
-    write_csv(processed_articles, PROCESSED_CSV_PATH, ARTICLE_FIELDS)
 
-    print("\n2/3 - Gerando a analise exploratoria...", flush=True)
+    print("\n2/4 - Gerando a analise exploratoria...", flush=True)
     summary = generate_reports(
         raw_articles,
         processed_articles,
@@ -597,10 +514,18 @@ def run_pipeline(update_mode=False):
         updated_articles,
     )
 
-    print("\n3/3 - Aplicando o pre-processamento de PLN...", flush=True)
+    print("\n3/4 - Aplicando o pre-processamento de PLN...", flush=True)
     nlp_dataframe = processar_nlp(processed_articles)
     temporal_summary = create_temporal_samples(nlp_dataframe)
     summary["temporal_comparison"] = temporal_summary
+
+    print("\n4/4 - Gerando Bag of Words, TF-IDF e clusters...", flush=True)
+    from clustering import gerar_vetores_e_clusters
+
+    clustered_dataframe, vectorization_summary = gerar_vetores_e_clusters(
+        nlp_dataframe
+    )
+    summary["vectorization"] = vectorization_summary
     (REPORTS_PATH / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -617,6 +542,10 @@ def run_pipeline(update_mode=False):
     print(f"Noticias curtas removidas: {short_articles}")
     print(f"Noticias validas: {len(processed_articles)}")
     print(f"Noticias processadas para PLN: {len(nlp_dataframe)}")
+    print(
+        f"Clusters: {vectorization_summary['selected_clusters']} para "
+        f"{len(clustered_dataframe)} noticias"
+    )
     print(
         f"Recorte recente: {temporal_summary['recent_articles']} noticias; "
         f"periodo anterior: {temporal_summary['previous_articles']} noticias"
@@ -636,10 +565,81 @@ def main():
         action="store_true",
         help="Cria uma tarefa do Windows para atualizar diariamente as 22:00",
     )
+    parser.add_argument(
+        "--agrupar",
+        action="store_true",
+        help="Regera vetores e clusters usando a base noticias_nlp.jsonl existente",
+    )
+    parser.add_argument(
+        "--indexar-busca",
+        action="store_true",
+        help="Gera indices Word2Vec e BERT para a busca semantica",
+    )
+    parser.add_argument(
+        "--sem-bert",
+        action="store_true",
+        help="Com --indexar-busca, gera somente o indice Word2Vec",
+    )
+    parser.add_argument(
+        "--buscar",
+        metavar="CONSULTA",
+        help="Busca noticias nos indices existentes",
+    )
+    parser.add_argument(
+        "--comparar-buscas",
+        metavar="CONSULTA",
+        help="Compara representacoes e metricas em uma matriz CSV",
+    )
+    parser.add_argument(
+        "--classificar",
+        action="store_true",
+        help="Treina o classificador TF-IDF para as categorias das noticias",
+    )
+    parser.add_argument(
+        "--metodo",
+        choices=("bow", "tfidf", "word2vec", "bert"),
+        default="tfidf",
+        help="Representacao usada por --buscar (padrao: tfidf)",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=10,
+        help="Quantidade de resultados de --buscar (padrao: 10)",
+    )
+    parser.add_argument(
+        "--metrica",
+        choices=("cosseno", "euclidiana", "manhattan"),
+        default="cosseno",
+        help="Metrica usada por --buscar (padrao: cosseno)",
+    )
     args = parser.parse_args()
 
     if args.agendar_diariamente:
         install_daily_schedule()
+    elif args.agrupar:
+        from clustering import agrupar_base_existente
+
+        agrupar_base_existente()
+    elif args.indexar_busca:
+        from busca import indexar_busca
+
+        indexar_busca(incluir_bert=not args.sem_bert)
+    elif args.buscar:
+        from busca import buscar, imprimir_resultados
+
+        imprimir_resultados(
+            buscar(args.buscar, args.metodo, args.top_k, args.metrica)
+        )
+    elif args.comparar_buscas:
+        from comparacao_buscas import gerar_matriz_comparacao, imprimir_comparacao
+
+        matriz = gerar_matriz_comparacao(args.comparar_buscas, args.top_k)
+        imprimir_comparacao(matriz)
+    elif args.classificar:
+        from classificacao import main as classificar_noticias
+
+        classificar_noticias()
     else:
         run_pipeline(update_mode=args.atualizar)
 
