@@ -27,8 +27,8 @@ from visualizacao_clusters import (
 )
 
 
-# Melhor media de silhouette entre sementes para os candidatos de k=2 ate k=40.
-NUMERO_CLUSTERS = 20
+# Quantidade de classes principais observadas nas categorias do Blog do Jaime.
+NUMERO_CLUSTERS = 9
 TOP_TERMOS = 8
 RANDOM_STATE = 42
 
@@ -38,6 +38,9 @@ REPORTS_PATH = PROJECT_DIR / "reports"
 CLUSTER_MODEL_PATH = PROCESSED_PATH / "modelo_kmeans.joblib"
 CLUSTERS_JSONL_PATH = PROCESSED_PATH / "noticias_clusters.jsonl"
 CLUSTER_SUMMARY_PATH = REPORTS_PATH / "cluster_summary.csv"
+CLUSTER_CATEGORY_MATRIX_PATH = REPORTS_PATH / "cluster_category_matrix.csv"
+CLUSTER_CATEGORY_MAPPING_PATH = REPORTS_PATH / "cluster_category_mapping.csv"
+CLUSTER_CONFUSION_MATRIX_PATH = REPORTS_PATH / "cluster_confusion_matrix.csv"
 CENTROID_DISTANCES_PATH = REPORTS_PATH / "cluster_centroid_distances.csv"
 SIMILARITY_BOW_PATH = PROCESSED_PATH / "similaridade_bow.csv"
 SIMILARITY_TFIDF_PATH = PROCESSED_PATH / "similaridade_tfidf.csv"
@@ -95,6 +98,102 @@ def resumir_clusters(modelo, vetorizador, matriz_tfidf, dataframe):
     return resumos
 
 
+def normalizar_categoria(categorias):
+    return (
+        categorias.fillna("Sem categoria")
+        .astype(str)
+        .str.split(",")
+        .str[0]
+        .str.strip()
+        .replace("", "Sem categoria")
+    )
+
+
+def avaliar_clusters_por_categoria(dataframe, resumos):
+    dataframe["categoria_real"] = normalizar_categoria(dataframe["category"])
+
+    matriz_categoria_cluster = pd.crosstab(
+        dataframe["categoria_real"],
+        dataframe["cluster"],
+    )
+    categorias_ordenadas = (
+        dataframe["categoria_real"].value_counts().sort_values(ascending=False).index
+    )
+    matriz_categoria_cluster = matriz_categoria_cluster.reindex(
+        index=categorias_ordenadas,
+        columns=range(NUMERO_CLUSTERS),
+        fill_value=0,
+    )
+
+    mapeamento = {}
+    linhas_mapeamento = []
+    resumos_por_cluster = {resumo["cluster"]: resumo for resumo in resumos}
+
+    for cluster_id in range(NUMERO_CLUSTERS):
+        contagens = matriz_categoria_cluster[cluster_id]
+        categoria = contagens.idxmax()
+        quantidade = int(contagens.loc[categoria])
+        total_cluster = int(contagens.sum())
+        pureza = quantidade / total_cluster if total_cluster else 0.0
+        mapeamento[cluster_id] = categoria
+
+        resumo = resumos_por_cluster[cluster_id]
+        resumo["categoria_majoritaria"] = categoria
+        resumo["quantidade_categoria_majoritaria"] = quantidade
+        resumo["pureza_categoria"] = round(pureza, 6)
+
+        linhas_mapeamento.append(
+            {
+                "cluster": cluster_id,
+                "cluster_label": resumo["rotulo"],
+                "categoria_atribuida": categoria,
+                "quantidade_noticias": total_cluster,
+                "quantidade_categoria_atribuida": quantidade,
+                "pureza_categoria": round(pureza, 6),
+                "termos_principais": resumo["termos_principais"],
+            }
+        )
+
+    dataframe["cluster_category"] = dataframe["cluster"].map(mapeamento)
+    matriz_confusao = pd.crosstab(
+        dataframe["categoria_real"],
+        dataframe["cluster_category"],
+    ).reindex(index=categorias_ordenadas, fill_value=0)
+
+    matriz_confusao = matriz_confusao.reindex(
+        columns=categorias_ordenadas,
+        fill_value=0,
+    )
+    acertos = sum(
+        matriz_confusao.loc[categoria, categoria]
+        for categoria in matriz_confusao.index
+        if categoria in matriz_confusao.columns
+    )
+
+    metricas = {
+        "cluster_category_accuracy": round(float(acertos / len(dataframe)), 6),
+        "cluster_category_purity": round(
+            float(
+                sum(
+                    linha["quantidade_categoria_atribuida"]
+                    for linha in linhas_mapeamento
+                )
+                / len(dataframe)
+            ),
+            6,
+        ),
+        "cluster_category_matrix": CLUSTER_CATEGORY_MATRIX_PATH.name,
+        "cluster_category_mapping": CLUSTER_CATEGORY_MAPPING_PATH.name,
+        "cluster_confusion_matrix": CLUSTER_CONFUSION_MATRIX_PATH.name,
+    }
+    return (
+        matriz_categoria_cluster,
+        pd.DataFrame(linhas_mapeamento),
+        matriz_confusao,
+        metricas,
+    )
+
+
 def calcular_distancias_centroides(modelo):
     similaridades = cosine_similarity(modelo.cluster_centers_)
     distancias = np.clip(1 - similaridades, 0, 2)
@@ -118,7 +217,15 @@ def salvar_matrizes_similaridade(matriz_bow, matriz_tfidf):
         dataframe.to_csv(caminho, float_format="%.6f", encoding="utf-8-sig")
 
 
-def salvar_resultados(dataframe, modelo, resumos, distancias_centroides):
+def salvar_resultados(
+    dataframe,
+    modelo,
+    resumos,
+    distancias_centroides,
+    matriz_categoria_cluster,
+    mapeamento_categorias,
+    matriz_confusao,
+):
     PROCESSED_PATH.mkdir(parents=True, exist_ok=True)
     REPORTS_PATH.mkdir(parents=True, exist_ok=True)
     joblib.dump(modelo, CLUSTER_MODEL_PATH)
@@ -130,6 +237,13 @@ def salvar_resultados(dataframe, modelo, resumos, distancias_centroides):
         date_format="iso",
     )
     pd.DataFrame(resumos).to_csv(CLUSTER_SUMMARY_PATH, index=False, encoding="utf-8")
+    matriz_categoria_cluster.to_csv(CLUSTER_CATEGORY_MATRIX_PATH, encoding="utf-8")
+    mapeamento_categorias.to_csv(
+        CLUSTER_CATEGORY_MAPPING_PATH,
+        index=False,
+        encoding="utf-8",
+    )
+    matriz_confusao.to_csv(CLUSTER_CONFUSION_MATRIX_PATH, encoding="utf-8")
     distancias_centroides.to_csv(CENTROID_DISTANCES_PATH, float_format="%.6f")
 
 
@@ -182,9 +296,23 @@ def gerar_vetores_e_clusters(dataframe, verbose=True):
     resumos = resumir_clusters(
         modelo, vetorizador_tfidf, matriz_tfidf, dataframe
     )
+    (
+        matriz_categoria_cluster,
+        mapeamento_categorias,
+        matriz_confusao,
+        metricas_categorias,
+    ) = avaliar_clusters_por_categoria(dataframe, resumos)
     distancias_centroides = calcular_distancias_centroides(modelo)
 
-    salvar_resultados(dataframe, modelo, resumos, distancias_centroides)
+    salvar_resultados(
+        dataframe,
+        modelo,
+        resumos,
+        distancias_centroides,
+        matriz_categoria_cluster,
+        mapeamento_categorias,
+        matriz_confusao,
+    )
     registrar_indices_lexicos(dataframe)
     gerar_html_clusters(dataframe, variancia)
 
@@ -202,6 +330,7 @@ def gerar_vetores_e_clusters(dataframe, verbose=True):
             "tfidf": SIMILARITY_TFIDF_PATH.name,
         },
         "centroid_distances": CENTROID_DISTANCES_PATH.name,
+        "category_evaluation": metricas_categorias,
         "vectorizer": {
             "source": "tokens_sem_stopwords",
             "min_df": 2,

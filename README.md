@@ -216,11 +216,17 @@ Arquivos:
   e configuracao necessarios para transformar novos textos;
 - `data/processed/modelo_kmeans.joblib`: modelo de agrupamento escolhido;
 - `data/processed/noticias_clusters.jsonl`: noticias com numero, rotulo e
-  coordenadas PCA em duas e tres dimensoes;
+  coordenadas PCA em duas e tres dimensoes, categoria real normalizada e
+  categoria atribuida pelo cluster;
 - `data/processed/similaridade_bow.csv` e `similaridade_tfidf.csv`: matrizes
   de similaridade do cosseno entre todas as noticias.
 
-O corpus usa diretamente `tokens_sem_stopwords`. O K-Means usa `NUMERO_CLUSTERS = 20`, definido de forma explicita apos testar `k` de 2 a 40. Entre os candidatos mais fortes, `k=20` teve a melhor media de silhouette em cinco sementes (`0.145383`). O PCA gera tres coordenadas usadas somente nas visualizacoes 2D e 3D.
+O corpus usa diretamente `tokens_sem_stopwords`. O K-Means usa
+`NUMERO_CLUSTERS = 9`, acompanhando as principais categorias usadas pelo Blog
+do Jaime na base coletada. O PCA gera tres coordenadas usadas somente nas
+visualizacoes 2D e 3D. Para comparar o agrupamento nao supervisionado com as
+categorias originais, cada cluster recebe a categoria majoritaria das noticias
+que cairam nele, e essa atribuicao alimenta a matriz de confusao.
 
 ### Indices de busca
 
@@ -270,7 +276,13 @@ categorias e termos mais frequentes. O resultado fica consolidado em
   e atualizadas, totais, datas, categorias, comparacao temporal, vetorizacao e
   valores de silhouette;
 - `reports/cluster_summary.csv`: tamanho, rotulo, termos e coesao media de
+  cada cluster, alem da categoria majoritaria e pureza por categoria;
+- `reports/cluster_category_matrix.csv`: contagem de categorias reais por
+  cluster numerico;
+- `reports/cluster_category_mapping.csv`: categoria majoritaria atribuida a
   cada cluster;
+- `reports/cluster_confusion_matrix.csv`: matriz de confusao entre categoria
+  real e categoria atribuida pelo cluster;
 - `reports/cluster_centroid_distances.csv`: distancia entre os centroides dos
   clusters;
 - `reports/clusters_tfidf.html` e `reports/clusters_tfidf_3d.html`: graficos
