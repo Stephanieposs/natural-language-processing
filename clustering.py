@@ -11,24 +11,29 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import cosine_similarity
 
-from bag_of_words import gerar_bag_of_words
+from bag_of_words import BOW_MATRIX_PATH, gerar_bag_of_words
+from bert import BERT_EMBEDDINGS_PATH
 from representacao_textual import (
     calcular_hash_base,
     carregar_base_nlp,
+    carregar_embeddings_csv,
     carregar_manifest_indices,
+    carregar_matriz_csv,
     construir_corpus,
     salvar_manifest_indices,
 )
-from tf_idf import gerar_tfidf
+from tf_idf import TFIDF_MATRIX_PATH, gerar_tfidf
 from visualizacao_clusters import (
     CLUSTER_3D_HTML_PATH,
     CLUSTER_HTML_PATH,
     gerar_html_clusters,
+    gerar_html_clusters_generico,
 )
+from word2vec import WORD2VEC_EMBEDDINGS_PATH
 
 
-# Quantidade de classes principais observadas nas categorias do Blog do Jaime.
-NUMERO_CLUSTERS = 9
+# Quantidade de clusters usada para comparar com as categorias do Blog do Jaime.
+NUMERO_CLUSTERS = 12
 TOP_TERMOS = 8
 RANDOM_STATE = 42
 
@@ -45,21 +50,39 @@ CENTROID_DISTANCES_PATH = REPORTS_PATH / "cluster_centroid_distances.csv"
 SIMILARITY_BOW_PATH = PROCESSED_PATH / "similaridade_bow.csv"
 SIMILARITY_TFIDF_PATH = PROCESSED_PATH / "similaridade_tfidf.csv"
 SUMMARY_PATH = REPORTS_PATH / "summary.json"
+CLUSTER_REPRESENTATION_COMPARISON_PATH = (
+    REPORTS_PATH / "cluster_representations_comparison.csv"
+)
+WORD2VEC_CLUSTERS_JSONL_PATH = PROCESSED_PATH / "noticias_clusters_word2vec_k12.jsonl"
+WORD2VEC_CLUSTER_SUMMARY_PATH = REPORTS_PATH / "cluster_summary_word2vec_k12.csv"
+WORD2VEC_CLUSTER_HTML_PATH = REPORTS_PATH / "clusters_word2vec_k12.html"
+WORD2VEC_CLUSTER_3D_HTML_PATH = REPORTS_PATH / "clusters_word2vec_k12_3d.html"
+K_CANDIDATOS_COMPARACAO = (9, 12, 13)
 
 
 def treinar_kmeans(matriz_tfidf):
+    return treinar_kmeans_com_k(matriz_tfidf, NUMERO_CLUSTERS)
+
+
+def treinar_kmeans_com_k(matriz, numero_clusters):
     modelo = KMeans(
-        n_clusters=NUMERO_CLUSTERS,
+        n_clusters=numero_clusters,
         random_state=RANDOM_STATE,
         n_init=10,
     )
-    clusters = modelo.fit_predict(matriz_tfidf)
+    clusters = modelo.fit_predict(matriz)
     return modelo, clusters
 
 
 def reduzir_para_tres_dimensoes(matriz_tfidf):
     pca = PCA(n_components=3, random_state=RANDOM_STATE)
     coordenadas = pca.fit_transform(matriz_tfidf.toarray())
+    return coordenadas, pca.explained_variance_ratio_
+
+
+def reduzir_array_para_tres_dimensoes(matriz):
+    pca = PCA(n_components=3, random_state=RANDOM_STATE)
+    coordenadas = pca.fit_transform(matriz)
     return coordenadas, pca.explained_variance_ratio_
 
 
@@ -194,11 +217,48 @@ def avaliar_clusters_por_categoria(dataframe, resumos):
     )
 
 
+def calcular_pureza_categoria(dataframe, clusters, numero_clusters):
+    dados = pd.DataFrame(
+        {
+            "categoria_real": normalizar_categoria(dataframe["category"]),
+            "cluster": clusters,
+        }
+    )
+    matriz = pd.crosstab(dados["categoria_real"], dados["cluster"]).reindex(
+        columns=range(numero_clusters),
+        fill_value=0,
+    )
+    categorias_majoritarias = []
+    acertos = 0
+    for cluster_id in range(numero_clusters):
+        contagens = matriz[cluster_id]
+        if contagens.sum() == 0:
+            continue
+        categoria = contagens.idxmax()
+        categorias_majoritarias.append(categoria)
+        acertos += int(contagens.loc[categoria])
+    return {
+        "pureza_categoria": round(float(acertos / len(dados)), 6),
+        "categorias_majoritarias": ", ".join(sorted(set(categorias_majoritarias))),
+        "quantidade_categorias_majoritarias": len(set(categorias_majoritarias)),
+    }
+
+
 def calcular_distancias_centroides(modelo):
     similaridades = cosine_similarity(modelo.cluster_centers_)
     distancias = np.clip(1 - similaridades, 0, 2)
     rotulos = [f"cluster_{indice}" for indice in range(NUMERO_CLUSTERS)]
     return pd.DataFrame(distancias, index=rotulos, columns=rotulos)
+
+
+def resumir_distancias_centroides(modelo):
+    similaridades = cosine_similarity(modelo.cluster_centers_)
+    distancias = np.clip(1 - similaridades, 0, 2)
+    valores = distancias[np.triu_indices(distancias.shape[0], k=1)]
+    return {
+        "distancia_media_centroides": round(float(valores.mean()), 6),
+        "distancia_minima_centroides": round(float(valores.min()), 6),
+    }
 
 
 def salvar_matrizes_similaridade(matriz_bow, matriz_tfidf):
@@ -267,6 +327,70 @@ def registrar_indices_lexicos(dataframe):
         "representations": ("bow", "tfidf"),
     }
     salvar_manifest_indices(manifesto)
+
+
+def carregar_representacoes_para_comparacao(total_documentos):
+    representacoes = {
+        "bow": (BOW_MATRIX_PATH, carregar_matriz_csv),
+        "tfidf": (TFIDF_MATRIX_PATH, carregar_matriz_csv),
+        "word2vec": (WORD2VEC_EMBEDDINGS_PATH, carregar_embeddings_csv),
+        "bert": (BERT_EMBEDDINGS_PATH, carregar_embeddings_csv),
+    }
+    matrizes = {}
+    for nome, (caminho, carregador) in representacoes.items():
+        if not caminho.exists():
+            continue
+        matriz = carregador(caminho)
+        if matriz.shape[0] == total_documentos:
+            matrizes[nome] = matriz
+    return matrizes
+
+
+def comparar_representacoes_clusters(
+    dataframe=None,
+    k_candidatos=K_CANDIDATOS_COMPARACAO,
+):
+    dataframe = carregar_base_nlp() if dataframe is None else dataframe.copy()
+    dataframe = dataframe.reset_index(drop=True)
+    matrizes = carregar_representacoes_para_comparacao(len(dataframe))
+    if not matrizes:
+        raise FileNotFoundError(
+            "Nenhuma representacao vetorial encontrada. Execute --agrupar e "
+            "--indexar-busca antes da comparacao."
+        )
+
+    linhas = []
+    for representacao, matriz in matrizes.items():
+        for numero_clusters in k_candidatos:
+            modelo, clusters = treinar_kmeans_com_k(matriz, numero_clusters)
+            pureza = calcular_pureza_categoria(dataframe, clusters, numero_clusters)
+            distancias = resumir_distancias_centroides(modelo)
+            linhas.append(
+                {
+                    "representacao": representacao,
+                    "clusters": numero_clusters,
+                    "documentos": int(matriz.shape[0]),
+                    "dimensoes": int(matriz.shape[1]),
+                    "silhouette_cosseno": round(
+                        float(silhouette_score(matriz, clusters, metric="cosine")),
+                        6,
+                    ),
+                    **pureza,
+                    **distancias,
+                }
+            )
+
+    resultado = pd.DataFrame(linhas).sort_values(
+        ["silhouette_cosseno", "pureza_categoria"],
+        ascending=False,
+    )
+    REPORTS_PATH.mkdir(parents=True, exist_ok=True)
+    resultado.to_csv(
+        CLUSTER_REPRESENTATION_COMPARISON_PATH,
+        index=False,
+        encoding="utf-8",
+    )
+    return resultado
 
 
 def gerar_vetores_e_clusters(dataframe, verbose=True):
@@ -350,6 +474,112 @@ def agrupar_base_existente():
     )
     print(f"Visualizacao 2D: {CLUSTER_HTML_PATH}")
     print(f"Visualizacao 3D: {CLUSTER_3D_HTML_PATH}")
+
+
+def comparar_clusters_existentes():
+    resultado = comparar_representacoes_clusters()
+    print("Comparacao de clusterizacao por representacao:")
+    print(resultado.to_string(index=False))
+    print(f"\nRelatorio: {CLUSTER_REPRESENTATION_COMPARISON_PATH}")
+
+
+def gerar_visualizacao_word2vec_k12(dataframe=None):
+    dataframe = carregar_base_nlp() if dataframe is None else dataframe.copy()
+    dataframe = dataframe.reset_index(drop=True)
+    if not WORD2VEC_EMBEDDINGS_PATH.exists():
+        raise FileNotFoundError(
+            "Embeddings Word2Vec ausentes. Execute: python projeto_pln.py --indexar-busca --sem-bert"
+        )
+
+    embeddings = carregar_embeddings_csv(WORD2VEC_EMBEDDINGS_PATH)
+    if embeddings.shape[0] != len(dataframe):
+        raise RuntimeError("Os embeddings Word2Vec nao correspondem a base atual.")
+
+    modelo, clusters = treinar_kmeans_com_k(embeddings, 12)
+    dataframe["cluster"] = clusters
+    dataframe["categoria_real"] = normalizar_categoria(dataframe["category"])
+
+    matriz = pd.crosstab(dataframe["categoria_real"], dataframe["cluster"]).reindex(
+        columns=range(12),
+        fill_value=0,
+    )
+    mapeamento = {}
+    resumos = []
+    for cluster_id in range(12):
+        contagens = matriz[cluster_id]
+        categoria = contagens.idxmax()
+        quantidade_categoria = int(contagens.loc[categoria])
+        quantidade_total = int(contagens.sum())
+        pureza = quantidade_categoria / quantidade_total if quantidade_total else 0.0
+        rotulo = f"{categoria} ({cluster_id})"
+        mapeamento[cluster_id] = rotulo
+        resumos.append(
+            {
+                "cluster": cluster_id,
+                "rotulo": rotulo,
+                "categoria_majoritaria": categoria,
+                "quantidade_noticias": quantidade_total,
+                "quantidade_categoria_majoritaria": quantidade_categoria,
+                "pureza_categoria": round(pureza, 6),
+                "coesao_media_cosseno": round(
+                    calcular_coesao_cluster(embeddings, np.where(clusters == cluster_id)[0]),
+                    6,
+                ),
+            }
+        )
+
+    dataframe["cluster_label"] = dataframe["cluster"].map(mapeamento)
+    dataframe["cluster_category"] = dataframe["cluster_label"].str.replace(
+        r" \(\d+\)$",
+        "",
+        regex=True,
+    )
+    coordenadas, variancia = reduzir_array_para_tres_dimensoes(embeddings)
+    dataframe["cluster_x"] = coordenadas[:, 0]
+    dataframe["cluster_y"] = coordenadas[:, 1]
+    dataframe["cluster_z"] = coordenadas[:, 2]
+
+    PROCESSED_PATH.mkdir(parents=True, exist_ok=True)
+    REPORTS_PATH.mkdir(parents=True, exist_ok=True)
+    dataframe.to_json(
+        WORD2VEC_CLUSTERS_JSONL_PATH,
+        orient="records",
+        lines=True,
+        force_ascii=False,
+        date_format="iso",
+    )
+    pd.DataFrame(resumos).to_csv(
+        WORD2VEC_CLUSTER_SUMMARY_PATH,
+        index=False,
+        encoding="utf-8",
+    )
+    gerar_html_clusters_generico(
+        dataframe,
+        variancia,
+        WORD2VEC_CLUSTER_HTML_PATH,
+        WORD2VEC_CLUSTER_3D_HTML_PATH,
+        "Clusters das noticias - Word2Vec k=12",
+        "Word2Vec",
+    )
+
+    resumo = {
+        "documents": int(len(dataframe)),
+        "representation": "word2vec",
+        "selected_clusters": 12,
+        "silhouette": round(
+            float(silhouette_score(embeddings, clusters, metric="cosine")),
+            6,
+        ),
+        "pca_explained_variance": [round(float(valor), 6) for valor in variancia],
+        "html_2d": WORD2VEC_CLUSTER_HTML_PATH.name,
+        "html_3d": WORD2VEC_CLUSTER_3D_HTML_PATH.name,
+        "summary": WORD2VEC_CLUSTER_SUMMARY_PATH.name,
+    }
+    print("Visualizacao Word2Vec k=12 concluida.")
+    print(f"Silhouette: {resumo['silhouette']}")
+    print(f"Visualizacao 2D: {WORD2VEC_CLUSTER_HTML_PATH}")
+    print(f"Visualizacao 3D: {WORD2VEC_CLUSTER_3D_HTML_PATH}")
+    return dataframe, resumo
 
 
 if __name__ == "__main__":

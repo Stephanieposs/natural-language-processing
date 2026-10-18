@@ -591,9 +591,34 @@ def main():
         help="Compara representacoes e metricas em uma matriz CSV",
     )
     parser.add_argument(
+        "--avaliar-buscas",
+        action="store_true",
+        help="Gera avaliacao top-3/top-5 para consultas padrao de busca",
+    )
+    parser.add_argument(
+        "--comparar-clusters",
+        action="store_true",
+        help="Compara clusterizacao com BoW, TF-IDF, Word2Vec e BERT",
+    )
+    parser.add_argument(
+        "--visualizar-word2vec-clusters",
+        action="store_true",
+        help="Gera visualizacao PCA 2D/3D para clusters Word2Vec com k=12",
+    )
+    parser.add_argument(
         "--classificar",
         action="store_true",
         help="Treina o classificador TF-IDF para as categorias das noticias",
+    )
+    parser.add_argument(
+        "--extrair-relacoes",
+        action="store_true",
+        help="Extrai entidades nomeadas e relacoes sujeito-verbo-objeto das noticias",
+    )
+    parser.add_argument(
+        "--sentimentos",
+        action="store_true",
+        help="Executa analise de sentimentos das noticias com lexico em portugues",
     )
     parser.add_argument(
         "--metodo",
@@ -636,10 +661,32 @@ def main():
 
         matriz = gerar_matriz_comparacao(args.comparar_buscas, args.top_k)
         imprimir_comparacao(matriz)
+    elif args.avaliar_buscas:
+        from comparacao_buscas import TOPK_ANALYSIS_PATH, gerar_avaliacao_topk
+
+        avaliacao = gerar_avaliacao_topk()
+        print(avaliacao.to_string(index=False))
+        print(f"\nRelatorio: {TOPK_ANALYSIS_PATH}")
+    elif args.comparar_clusters:
+        from clustering import comparar_clusters_existentes
+
+        comparar_clusters_existentes()
+    elif args.visualizar_word2vec_clusters:
+        from clustering import gerar_visualizacao_word2vec_k12
+
+        gerar_visualizacao_word2vec_k12()
     elif args.classificar:
         from classificacao import main as classificar_noticias
 
         classificar_noticias()
+    elif args.extrair_relacoes:
+        from entidades_relacoes import main as extrair_informacoes
+
+        extrair_informacoes()
+    elif args.sentimentos:
+        from analise_sentimentos import main as analisar_sentimentos
+
+        analisar_sentimentos()
     else:
         run_pipeline(update_mode=args.atualizar)
 

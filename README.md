@@ -79,6 +79,26 @@ python classificacao.py
 `clustering.py` tambem regenera Bag of Words e TF-IDF, mantendo matrizes,
 vocabulario e clusters na mesma versao da base.
 
+Para comparar a clusterizacao entre BoW, TF-IDF, Word2Vec e BERT:
+
+```powershell
+python projeto_pln.py --comparar-clusters
+```
+
+O comando testa `k=9`, `k=12` e `k=13`, salvando silhouette, pureza por
+categoria e distancias entre centroides em
+`reports/cluster_representations_comparison.csv`.
+
+Para gerar a visualizacao PCA da melhor combinacao observada na comparacao
+atual, Word2Vec com `k=12`:
+
+```powershell
+python projeto_pln.py --visualizar-word2vec-clusters
+```
+
+O comando salva `reports/clusters_word2vec_k12.html` e
+`reports/clusters_word2vec_k12_3d.html`, sem substituir as visualizacoes TF-IDF.
+
 ### Criar os indices de busca
 
 ```powershell
@@ -115,13 +135,55 @@ O comando testa as doze combinacoes entre as quatro representacoes e as tres
 metricas. O resultado completo fica em `reports/comparacao_buscas.csv`, com
 titulo, categoria, URL e score de cada posicao.
 
+Para gerar uma avaliacao top-3/top-5 em consultas padrao:
+
+```powershell
+python projeto_pln.py --avaliar-buscas
+```
+
+O resultado fica em `reports/busca_topk_avaliacao.csv`, com score medio,
+categoria dominante, proporcao da categoria dominante e titulos retornados por
+representacao.
+
 ### Classificar as categorias
 
 ```powershell
 python projeto_pln.py --classificar
 ```
 
-Segue o fluxo: titulo e conteudo -> TF-IDF -> Regressao Logistica -> categoria prevista. O comando separa treino e teste de forma estratificada e exibe precision, recall e F1 por categoria. Para que cada classe tenha uma amostra minima no teste, categorias com menos de 30 noticias nao entram no treinamento.
+Segue o fluxo: titulo e conteudo -> representacao textual -> Regressao
+Logistica -> categoria prevista. O comando separa treino e teste de forma
+estratificada e compara BoW, TF-IDF, Word2Vec e BERT. Para que cada classe tenha
+uma amostra minima no teste, categorias com menos de 30 noticias nao entram no
+treinamento.
+
+### Extrair entidades nomeadas e relacoes
+
+```powershell
+python projeto_pln.py --extrair-relacoes
+```
+
+Usa spaCy com `pt_core_news_sm` para localizar entidades nomeadas no titulo e
+conteudo das noticias. Em seguida, aplica regras sobre dependencias sintaticas
+para extrair triplas do tipo sujeito -> relacao -> objeto/complemento. As
+relacoes usam o lema do verbo e, quando o complemento e preposicionado, incluem
+a preposicao normalizada, como `trabalhar_em` ou `colaborar_com`.
+Tanto o NER quanto as relacoes sao preditivos e aproximados: as entidades
+dependem dos rotulos do modelo spaCy e podem ter fronteiras ou categorias
+incorretas; as relacoes dependem do parser sintatico e de regras locais.
+
+### Analisar sentimentos
+
+```powershell
+python projeto_pln.py --sentimentos
+```
+
+Classifica cada noticia como `positivo`, `neutro` ou `negativo` usando um
+lexico em portugues com tratamento simples de negacao, intensidade e expressoes
+curtas. A abordagem e auditavel: cada linha guarda os termos positivos e
+negativos que influenciaram a pontuacao. Como noticias locais tendem a usar
+linguagem informativa, o resultado deve ser interpretado como polaridade lexical
+do texto, nao como emocao real dos envolvidos.
 
 ## Fluxo dos dados
 
@@ -179,6 +241,8 @@ Busca com cosseno, distancia euclidiana ou Manhattan
 | `metricas_busca.py` | Cosseno, distancia euclidiana e Manhattan |
 | `comparacao_buscas.py` | Matriz comparativa das representacoes e metricas |
 | `classificacao.py` | TF-IDF e Regressao Logistica para prever categorias |
+| `entidades_relacoes.py` | NER, triplas sujeito-relacao-objeto e resumos |
+| `analise_sentimentos.py` | Polaridade lexical das noticias e resumos por categoria/cluster |
 
 ## Camadas da base
 
@@ -221,9 +285,46 @@ Arquivos:
 - `data/processed/similaridade_bow.csv` e `similaridade_tfidf.csv`: matrizes
   de similaridade do cosseno entre todas as noticias.
 
+### Entidades e relacoes
+
+Arquivos:
+
+- `data/processed/noticias_entidades.jsonl`: mencoes reconhecidas pelo NER,
+  com noticia, sentenca, texto da entidade, rotulo e posicoes de caracteres;
+- `data/processed/noticias_relacoes.csv`: triplas extraidas com sujeito,
+  relacao, objeto, sentenca de origem, verbo e dependencia sintatica do objeto;
+- `reports/entities_summary.csv`: quantidade de mencoes e entidades distintas
+  por rotulo do spaCy;
+- `reports/relations_summary.csv`: relacoes mais frequentes e pares principais.
+
+A extracao de relacoes e baseada em regras, portanto deve ser lida como uma
+aproximacao auditavel. Ela cobre sujeitos ligados ao mesmo verbo e complementos
+`obj`, `iobj` e `obl`; tambem reaproveita o sujeito de verbos coordenados em
+alguns casos. Nao resolve correferencia, sinonimia, negacao, tempo verbal ou
+papeis semanticos completos.
+
+### Sentimentos
+
+Arquivos:
+
+- `data/processed/noticias_sentimentos.jsonl`: pontuacao e rotulo de sentimento
+  por noticia, com evidencias lexicais positivas e negativas;
+- `reports/sentiment_summary.csv`: totais gerais e media de polaridade;
+- `reports/sentiment_by_category.csv`: distribuicao de sentimentos por
+  categoria original normalizada;
+- `reports/sentiment_by_cluster.csv`: distribuicao de sentimentos por cluster,
+  quando os clusters estao atualizados.
+
+A pontuacao varia de -1 a 1: valores negativos indicam predominancia de termos
+negativos, valores positivos indicam predominancia de termos positivos e valores
+proximos de zero ficam como `neutro`. O metodo usa lexico local e regras simples,
+portanto e transparente, mas nao substitui um classificador supervisionado
+treinado com exemplos anotados de sentimentos.
+
 O corpus usa diretamente `tokens_sem_stopwords`. O K-Means usa
-`NUMERO_CLUSTERS = 9`, acompanhando as principais categorias usadas pelo Blog
-do Jaime na base coletada. O PCA gera tres coordenadas usadas somente nas
+`NUMERO_CLUSTERS = 12`, como teste proximo da quantidade de categorias
+normalizadas usadas pelo Blog do Jaime na base coletada. O PCA gera tres
+coordenadas usadas somente nas
 visualizacoes 2D e 3D. Para comparar o agrupamento nao supervisionado com as
 categorias originais, cada cluster recebe a categoria majoritaria das noticias
 que cairam nele, e essa atribuicao alimenta a matriz de confusao.
@@ -285,12 +386,24 @@ categorias e termos mais frequentes. O resultado fica consolidado em
   real e categoria atribuida pelo cluster;
 - `reports/cluster_centroid_distances.csv`: distancia entre os centroides dos
   clusters;
+- `reports/cluster_representations_comparison.csv`: silhouette, pureza por
+  categoria e distancias entre centroides para BoW, TF-IDF, Word2Vec e BERT;
 - `reports/clusters_tfidf.html` e `reports/clusters_tfidf_3d.html`: graficos
   interativos PCA em duas e tres dimensoes;
+- `reports/clusters_word2vec_k12.html` e `clusters_word2vec_k12_3d.html`:
+  graficos interativos PCA dos clusters Word2Vec com `k=12`;
 - `reports/classification_report.csv`: precision, recall, F1 e suporte por
   categoria no conjunto de teste;
+- `reports/classification_comparison.csv`: acuracia, macro-F1 e weighted-F1 por
+  representacao textual;
+- `reports/entities_summary.csv`: contagens de entidades por rotulo;
+- `reports/relations_summary.csv`: contagens de relacoes extraidas;
+- `reports/sentiment_summary.csv`, `sentiment_by_category.csv` e
+  `sentiment_by_cluster.csv`: resumos da analise de sentimentos;
 - `reports/comparacao_buscas.csv`: ranking comparativo entre representacoes e
   metricas para a consulta informada.
+- `reports/busca_topk_avaliacao.csv`: avaliacao top-3/top-5 das consultas de
+  busca por representacao.
 
 Todos os relatorios sao regenerados depois da coleta inicial ou de uma
 atualizacao incremental.
