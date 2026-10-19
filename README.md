@@ -99,6 +99,36 @@ python projeto_pln.py --visualizar-word2vec-clusters
 O comando salva `reports/clusters_word2vec_k12.html` e
 `reports/clusters_word2vec_k12_3d.html`, sem substituir as visualizacoes TF-IDF.
 
+Para completar PCA e visualizacoes de BoW e BERT:
+
+```powershell
+python projeto_pln.py --visualizar-clusters bow bert --numero-clusters 13
+```
+
+O comando reutiliza `bow_matrix.csv` e `embeddings_bert.csv`, valida a versao
+da base e a ordem dos documentos e executa K-Means com `random_state=42` e
+`n_init=10`. O valor `k=13` foi o melhor testado para cada uma dessas duas
+representacoes na comparacao salva; Word2Vec com `k=12` continua sendo a melhor
+combinacao geral observada. O agrupamento usa os vetores completos; PCA serve
+somente para visualizacao.
+
+Para cada representacao, sao gerados:
+
+- `reports/clusters_bow_k13.html` e `clusters_bow_k13_3d.html` (ou `bert`):
+  graficos interativos em 2D e 3D;
+- `data/processed/noticias_clusters_bow_k13.jsonl` (ou `bert`): grupos,
+  categoria majoritaria e coordenadas PCA por noticia;
+- `data/processed/modelo_kmeans_bow_k13.joblib` (ou `bert`): modelo persistido;
+- `reports/cluster_summary_bow_k13.csv` (ou `bert`): tamanho, pureza e coesao
+  por grupo;
+- `reports/cluster_centroid_distances_bow_k13.csv` (ou `bert`): distancias
+  de cosseno entre centroides;
+- `reports/cluster_visualization_bow_k13.json` (ou `bert`): parametros,
+  identificador da base, silhouette e variancia explicada pelo PCA.
+
+E possivel gerar apenas uma representacao, por exemplo
+`python projeto_pln.py --visualizar-clusters bert --numero-clusters 13`.
+
 ### Criar os indices de busca
 
 ```powershell

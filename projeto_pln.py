@@ -601,6 +601,18 @@ def main():
         help="Compara clusterizacao com BoW, TF-IDF, Word2Vec e BERT",
     )
     parser.add_argument(
+        "--visualizar-clusters",
+        nargs="+",
+        choices=("bow", "bert"),
+        help="Gera PCA e graficos 2D/3D para BoW e/ou BERT usando os vetores existentes",
+    )
+    parser.add_argument(
+        "--numero-clusters",
+        type=int,
+        default=13,
+        help="Numero de grupos de --visualizar-clusters (padrao: 13)",
+    )
+    parser.add_argument(
         "--visualizar-word2vec-clusters",
         action="store_true",
         help="Gera visualizacao PCA 2D/3D para clusters Word2Vec com k=12",
@@ -671,6 +683,11 @@ def main():
         from clustering import comparar_clusters_existentes
 
         comparar_clusters_existentes()
+    elif args.visualizar_clusters:
+        from clustering import gerar_visualizacao_representacao
+
+        for representacao in dict.fromkeys(args.visualizar_clusters):
+            gerar_visualizacao_representacao(representacao, args.numero_clusters)
     elif args.visualizar_word2vec_clusters:
         from clustering import gerar_visualizacao_word2vec_k12
 

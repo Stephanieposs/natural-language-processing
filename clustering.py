@@ -483,6 +483,119 @@ def comparar_clusters_existentes():
     print(f"\nRelatorio: {CLUSTER_REPRESENTATION_COMPARISON_PATH}")
 
 
+def gerar_visualizacao_representacao(representacao, numero_clusters=13, dataframe=None):
+    """Completa PCA e visualizacoes de BoW/BERT usando os vetores existentes."""
+    fontes = {
+        "bow": (BOW_MATRIX_PATH, carregar_matriz_csv, "lexical", "BoW"),
+        "bert": (BERT_EMBEDDINGS_PATH, carregar_embeddings_csv, "semantic", "BERT"),
+    }
+    if representacao not in fontes:
+        raise ValueError("Escolha bow ou bert para esta visualizacao.")
+    dataframe = carregar_base_nlp() if dataframe is None else dataframe.copy()
+    dataframe = dataframe.reset_index(drop=True)
+    if not 2 <= numero_clusters < len(dataframe):
+        raise ValueError("Use pelo menos 2 clusters e menos clusters que noticias.")
+
+    caminho, carregador, secao, nome = fontes[representacao]
+    if not caminho.exists():
+        raise FileNotFoundError(f"Vetores {nome} ausentes em {caminho}.")
+    manifesto = carregar_manifest_indices().get(secao, {})
+    dataset_hash = calcular_hash_base(dataframe)
+    if (
+        manifesto.get("documents") != len(dataframe)
+        or manifesto.get("dataset_hash") != dataset_hash
+    ):
+        comando = "--agrupar" if representacao == "bow" else "--indexar-busca"
+        raise RuntimeError(f"Os vetores {nome} nao correspondem a base atual. Execute {comando}.")
+    identificadores = pd.read_csv(caminho, usecols=["id"])["id"].to_numpy()
+    if not np.array_equal(identificadores, np.arange(len(dataframe))):
+        raise ValueError(f"A ordem dos ids dos vetores {nome} nao corresponde a base.")
+    matriz = carregador(caminho)
+    if matriz.shape[0] != len(dataframe) or matriz.shape[1] < 3:
+        raise ValueError("A matriz deve conter uma linha por noticia e pelo menos 3 dimensoes.")
+    if not np.isfinite(matriz).all():
+        raise ValueError("A matriz contem valores ausentes ou nao finitos.")
+
+    print(f"Gerando clusters {nome} com k={numero_clusters} e PCA...", flush=True)
+    modelo, grupos = treinar_kmeans_com_k(matriz, numero_clusters)
+    coordenadas, variancia = reduzir_array_para_tres_dimensoes(matriz)
+    dataframe["cluster"] = grupos
+    dataframe["categoria_real"] = normalizar_categoria(dataframe["category"])
+    for eixo, valores in zip(("cluster_x", "cluster_y", "cluster_z"), coordenadas.T):
+        dataframe[eixo] = valores
+
+    resumos = []
+    categorias = {}
+    rotulos = {}
+    for grupo in range(numero_clusters):
+        indices = np.flatnonzero(grupos == grupo)
+        contagens = dataframe.loc[indices, "categoria_real"].value_counts()
+        if contagens.empty:
+            raise ValueError("O K-Means produziu grupos vazios; reduza o numero de clusters.")
+        categoria = contagens.idxmax()
+        categorias[grupo] = categoria
+        rotulos[grupo] = f"{categoria} ({grupo})"
+        resumos.append({
+            "cluster": grupo,
+            "rotulo": rotulos[grupo],
+            "categoria_majoritaria": categoria,
+            "quantidade_noticias": len(indices),
+            "quantidade_categoria_majoritaria": int(contagens.iloc[0]),
+            "pureza_categoria": round(float(contagens.iloc[0] / len(indices)), 6),
+            "coesao_media_cosseno": round(calcular_coesao_cluster(matriz, indices), 6),
+        })
+    dataframe["cluster_label"] = dataframe["cluster"].map(rotulos)
+    dataframe["cluster_category"] = dataframe["cluster"].map(categorias)
+
+    stem = f"{representacao}_k{numero_clusters}"
+    PROCESSED_PATH.mkdir(parents=True, exist_ok=True)
+    REPORTS_PATH.mkdir(parents=True, exist_ok=True)
+    jsonl_path = PROCESSED_PATH / f"noticias_clusters_{stem}.jsonl"
+    model_path = PROCESSED_PATH / f"modelo_kmeans_{stem}.joblib"
+    summary_path = REPORTS_PATH / f"cluster_summary_{stem}.csv"
+    distances_path = REPORTS_PATH / f"cluster_centroid_distances_{stem}.csv"
+    html_path = REPORTS_PATH / f"clusters_{stem}.html"
+    html_3d_path = REPORTS_PATH / f"clusters_{stem}_3d.html"
+    metadata_path = REPORTS_PATH / f"cluster_visualization_{stem}.json"
+    dataframe.to_json(jsonl_path, orient="records", lines=True, force_ascii=False, date_format="iso")
+    joblib.dump(modelo, model_path)
+    pd.DataFrame(resumos).to_csv(summary_path, index=False, encoding="utf-8")
+    distancias = np.clip(1 - cosine_similarity(modelo.cluster_centers_), 0, 2)
+    rotulos_distancias = [f"cluster_{i}" for i in range(numero_clusters)]
+    pd.DataFrame(distancias, index=rotulos_distancias, columns=rotulos_distancias).to_csv(
+        distances_path, float_format="%.6f"
+    )
+    gerar_html_clusters_generico(
+        dataframe, variancia, html_path, html_3d_path,
+        f"Clusters das noticias - {nome} k={numero_clusters}", nome,
+    )
+    resumo = {
+        "documents": len(dataframe),
+        "dataset_hash": dataset_hash,
+        "representation": representacao,
+        "dimensions": int(matriz.shape[1]),
+        "selected_clusters": numero_clusters,
+        "kmeans": {"random_state": RANDOM_STATE, "n_init": 10},
+        "pca_components": 3,
+        "pca_explained_variance": [float(v) for v in variancia],
+        "silhouette_cosseno": round(float(silhouette_score(matriz, grupos, metric="cosine")), 6),
+        **calcular_pureza_categoria(dataframe, grupos, numero_clusters),
+        **resumir_distancias_centroides(modelo),
+        "source_vectors": caminho.name,
+        "clusters": jsonl_path.name,
+        "model": model_path.name,
+        "summary": summary_path.name,
+        "centroid_distances": distances_path.name,
+        "html_2d": html_path.name,
+        "html_3d": html_3d_path.name,
+    }
+    metadata_path.write_text(json.dumps(resumo, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Silhouette: {resumo['silhouette_cosseno']}")
+    print(f"Visualizacao 2D: {html_path}")
+    print(f"Visualizacao 3D: {html_3d_path}")
+    return dataframe, resumo
+
+
 def gerar_visualizacao_word2vec_k12(dataframe=None):
     dataframe = carregar_base_nlp() if dataframe is None else dataframe.copy()
     dataframe = dataframe.reset_index(drop=True)
