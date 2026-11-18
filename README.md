@@ -163,10 +163,10 @@ sensiveis antes de publicar o pacote atualizado.
 
 | Tecnologia ou abordagem | Utilizada? | Aplicacao ou justificativa |
 |---|---|---|
-| LLMs e modelos de linguagem | Sim | BERTimbau foi usado localmente como encoder; o agente local usa Gemini por API para redigir relatorios quando configurado. |
+| LLMs e modelos de linguagem | Sim | O agente usa Gemini por API (por padrao, `gemini-3.1-flash-lite`) para redigir boletins a partir das noticias recuperadas. |
 | Prompt engineering e saidas estruturadas | Sim | O agente pede JSON com resumo, destaques e numeros de fontes, valida as referencias e formata o e-mail no servidor. |
 | RAG e recuperacao | Sim | O agente recupera noticias por TF-IDF, Word2Vec e RRF e envia trechos como contexto ao Gemini para gerar um relatorio fundamentado. |
-| Agentes e ferramentas | Sim, fluxo local | O servidor combina busca, geracao e envio SMTP agendado; nao usa planejamento autonomo do LLM. |
+| Agentes e integracao com ferramentas | Sim, fluxo local | O servidor encadeia busca hibrida, geracao do relatorio e envio agendado por e-mail. Os passos seguem regras definidas; o LLM nao escolhe ferramentas nem planeja a execucao. |
 | Modelos locais ou quantizados | Sim, locais | Word2Vec treinado no corpus e BERTimbau pre-treinado usado localmente; nao foram quantizados. |
 | Multimodalidade | Nao | O processamento usa texto. |
 | Outras tecnicas avancadas | Sim | Fusao de rankings por RRF; tambem houve clusterizacao e classificacao nas etapas anteriores. |
@@ -209,6 +209,14 @@ com julgamentos humanos independentes para medir Precision@5 e MRR, e
 comparar resultados em consultas novas. Na base atual, a consulta "acidente
 no centro" recuperou acidentes nos primeiros resultados, mas tambem noticias
 de locais fora do Centro: reconhecer o tema nao garante o local pedido.
+O agente amplia essa busca com sintese e referencias, mas ainda nao ha
+comparacao quantitativa que comprove melhora de relevancia. Em uma previa
+real sobre "mobilidade", quatro noticias foram selecionadas e o Gemini gerou
+tres destaques com fontes. Uma busca semanal por "Oktoberfest" sem noticia
+diretamente relacionada no recorte nao gerou boletim. Os testes automatizados
+verificam selecao temporal, referencias, formato HTML e texto simples,
+protecao contra HTML indevido e envio simulado; a exatidao factual dos
+relatorios ainda depende da leitura das noticias originais.
 Limites principais: uma unica fonte,
 categorias editoriais amplas, recorte temporal, termos desconhecidos para
 Word2Vec, dependencia lexical do TF-IDF e possivel perda de informacao pela
@@ -231,7 +239,8 @@ OpenAI Codex (GPT-6) auxiliou na implementacao e revisao da interface, dos
 graficos, do servidor local, dos exportadores, dos coletores e desta
 documentacao. Os pedidos principais foram criar uma busca comparativa e
 hibrida a partir dos indices existentes, ampliar a base, separar as abas e
-permitir atualizacoes por data ou quantidade. A busca convencional nao chama
+permitir atualizacoes por data ou quantidade, alem de integrar a busca ao
+agente e formatar o relatorio em e-mail HTML. A busca convencional nao chama
 modelo generativo; a aba Agente usa Gemini quando a chave esta configurada.
 
 Projeto de PLN para coletar e organizar noticias publicas de Blumenau e regiao
@@ -672,14 +681,17 @@ categorias e termos mais frequentes. O resultado fica consolidado em
 - `reports/busca_topk_avaliacao.csv`: avaliacao top-3/top-5 das consultas de
   busca por representacao.
 
-Todos os relatorios sao regenerados depois da coleta inicial ou de uma
-atualizacao incremental.
+Os relatorios da coleta e do processamento sao atualizados pelos respectivos
+comandos. A rotina de atualizacao da pagina regenera os indices Word2Vec e os
+graficos web quando o acervo muda; os resultados antigos de BERTimbau nao sao
+recalculados por essa rotina.
 
 ## Estado da execucao
 
-Os totais de coleta, qualidade, recorte temporal, vetorizacao e silhouette sao
-atualizados a cada execucao em `reports/summary.json`; por isso o README nao
-mantem numeros que se tornam defasados com novas noticias.
+Os totais e as metricas deste README descrevem o acervo publicado nesta
+versao. Apos novas coletas, consulte `reports/summary.json` e
+`web/data/results.json` para os valores atualizados e revise este texto antes
+de divulgar outra versao.
 
 ## Configuracoes
 
