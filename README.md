@@ -3,6 +3,35 @@
 Autores: Stephanie Possamai, Cristian Monster, Beatriz Mariah, Beatriz Conrat
 e Julia Welter.
 
+## Resumo para apresentacao
+
+| Aspecto | Resultado nesta versao |
+|---|---|
+| Problema | Organizar e recuperar noticias locais publicadas em categorias editoriais amplas. |
+| Dados | Blog do Jaime: 4.081 registros coletados, 3.459 noticias validas apos limpeza e 3.102 noticias no indice publico. |
+| Demonstracao | Busca TF-IDF, Word2Vec, hibrida e comparacao lado a lado; aba de resultados; agente local que gera boletins e envia por e-mail. |
+| Tecnicas | TF-IDF, Word2Vec, fusao RRF, K-Means, PCA e geracao fundamentada em noticias recuperadas com Gemini. |
+| Evidencias | No agrupamento com 12 grupos, Word2Vec teve silhouette 0,326 e pureza 0,722; TF-IDF teve 0,107 e 0,714. Essas medidas nao avaliam diretamente a busca. |
+| Limites | Uma fonte, recorte temporal, categorias amplas e ausencia de julgamentos humanos de relevancia. O agente depende de servidor local e de acervo atualizado. |
+
+Para apresentar: busque `acidente no centro` e alterne entre os quatro metodos;
+na aba **Resultados**, compare os agrupamentos. Com o servidor local ativo,
+gere uma previa semanal sobre `mobilidade` na aba **Agente**. O link publico da
+aplicacao ainda precisa ser configurado; a busca e os graficos podem ser
+publicados como site estatico, enquanto o agente requer servidor Python.
+
+### Visualizacao 2D dos clusters
+
+![Projecao PCA em duas dimensoes de 3.102 noticias publicas, coloridas por 12 clusters Word2Vec](docs/figures/clusters_word2vec_2d.png)
+
+Cada ponto representa uma noticia do indice publico; a cor representa o grupo
+atribuido pelo K-Means, nao a categoria editorial. Os dois eixos PCA explicam
+28,4% da variacao dos vetores. As metricas de silhouette e pureza acima foram
+calculadas nas 3.459 noticias validas, antes do recorte publico. A imagem e
+gerada a partir de `web/data/results.json` com
+`python scripts/gerar_imagem_clusters_readme.py`; atualize-a apos reindexar o
+acervo. A aba **Resultados** permite explorar os pontos interativamente.
+
 ## Aplicacao web (versao de demonstracao)
 
 A pagina em `web/` apresenta uma busca funcional sobre as noticias do projeto.
