@@ -86,30 +86,30 @@ disponibilidade dependem da cota e do plano associados a chave. Consulte a
 para configurar o acesso. A aplicacao nao envia e-mail nem faz chamada ao
 Gemini enquanto as respectivas opcoes nao forem usadas ou agendadas.
 
-O corpus foi ampliado em 11/11/2026: depois de coletar as publicacoes
-posteriores a 21/09, foram obtidas **1.990 publicacoes anteriores** em 20
-paginas da API publica. Em 16/11, uma nova consulta a API coletou **100
-publicacoes** de 12 a 16/11: **77** passaram pelos filtros de qualidade e
-**68** entraram no indice publico. O historico contem **4.081 registros
-brutos** e **3.459 noticias validas**, publicadas de 05/05/2026 a
-16/11/2026. A demonstracao indexa **3.102 noticias**: `Aniversarios` e
-`Falecidos` foram omitidas do
-pacote publico por conterem muitos nomes pessoais. Sao publicados somente
-titulo, categoria, data, URL e vetores/projecoes; o texto integral nao acompanha a
-pagina. Para conter o tamanho do pacote web, a consulta Word2Vec usa os
-5.000 termos mais frequentes do corpus; os vetores das noticias foram
-calculados a partir do vocabulario completo. As noticias recentes mostradas
-nela pertencem ao proprio indice.
-`Destaques` e um rotulo editorial da fonte: 759 noticias validas recebem esse
-rotulo sem outra categoria associada. O tema pode coincidir com eventos,
-transito ou tempo, mas a pagina preserva a categoria recebida e nao replica a
-noticia em outros filtros. A base valida nao tem URLs nem hashes de conteudo
-duplicados; publicacoes parecidas em datas diferentes podem aparecer.
-Em 16/11/2026, as 24 publicacoes de 11/11 foram consultadas novamente na
-API da fonte: as 11 que tinham a categoria `Destaques` continuavam com ela;
-nenhuma das 24 mudou de categoria. A verificacao compara o rotulo da noticia,
-nao sua posicao momentanea na pagina inicial do portal. O registro detalhado
-esta em `reports/destaques_2026-11-11_revisao.json` no ambiente local.
+### Acervo da demonstracao
+
+O acervo foi formado por coletas e atualizacoes na API publica do Blog do
+Jaime. O processamento reuniu publicacoes recentes e anteriores, removeu
+textos curtos e duplicatas e regenerou os indices de busca e os graficos.
+O historico contem **4.081 registros brutos**, dos quais **3.459 noticias
+passaram pelos filtros de qualidade**. A demonstracao indexa **3.102 noticias**:
+as categorias `Aniversarios` e `Falecidos` foram excluidas do pacote publico
+por conterem muitos nomes pessoais.
+
+A pagina publica titulo, categoria, data, URL e vetores/projecoes; o texto
+integral nao acompanha o site. A busca Word2Vec usa os **5.000 termos mais
+frequentes** do corpus para limitar o tamanho do pacote web, enquanto os
+vetores das noticias foram calculados com o vocabulario completo. A lista de
+noticias recentes usa esse mesmo indice.
+
+`Destaques` e uma categoria editorial da fonte atribuida a **759 noticias**.
+Uma noticia pode tratar de evento, transito ou tempo e ainda receber somente
+esse rotulo; por isso ela nao e repetida em outros filtros. Uma conferencia
+amostral na API confirmou que o rotulo pertence a noticia, e nao a sua
+posicao na pagina inicial. A base valida nao tem URLs nem hashes de conteudo
+duplicados, embora noticias parecidas sobre o mesmo acontecimento possam
+aparecer em publicacoes diferentes.
+
 Nao ha custo de API na busca pelo navegador; o agente com Gemini pode consumir
 cota ou gerar custos. Para atualizar o indice, sao necessarios
 acesso ao portal, os pacotes Python declarados e tempo de CPU para o Word2Vec.
