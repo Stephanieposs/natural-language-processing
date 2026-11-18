@@ -8,3 +8,12 @@ data/processed/*
 !data/processed/.gitkeep
 reports/
 output/
+tmp/
+*.pdf
+*.doc
+*.docx
+*.odt
+*.rtf
+.env
+.env.*
+!.env.example

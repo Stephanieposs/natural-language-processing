@@ -1,5 +1,177 @@
 # Noticias de Blumenau - projeto de PLN
 
+Autores: Stephanie Possamai, Cristian Monster, Beatriz Mariah, Beatriz Conrat
+e Julia Welter.
+
+## Aplicacao web (versao de demonstracao)
+
+A pagina em `web/` apresenta uma busca funcional sobre as noticias do projeto.
+Ela compara TF-IDF, Word2Vec e uma fusao dos rankings (Reciprocal Rank Fusion,
+RRF), com exemplos de consultas, filtro por categoria e links para a fonte.
+As abas separam busca, noticias recentes, resultados do modelo atualizado,
+informacoes sobre atualizacoes/alertas e metodologia. Na busca, a explicacao
+ao lado do seletor muda entre Hibrida, TF-IDF, Word2Vec e Comparar. A busca
+roda no navegador, sem conta ou chave externa. O link publico ainda nao foi
+configurado.
+
+Para visualizar localmente, na raiz do repositorio:
+
+```powershell
+python web_server.py
+```
+
+Abra `http://127.0.0.1:8765/`. A aba "Atualizacoes e alertas" e informativa:
+a interface publica nao oferece botoes para executar coleta, agendamento ou
+notificacoes. O servidor local conserva as rotinas de atualizacao. Para
+hospedar apenas a demonstracao publica, basta servir a pasta `web/` como site
+estatico.
+
+O corpus foi ampliado em 11/11/2026: depois de coletar as publicacoes
+posteriores a 21/09, foram obtidas **1.990 publicacoes anteriores** em 20
+paginas da API publica. Em 16/11, uma nova consulta a API coletou **100
+publicacoes** de 12 a 16/11: **77** passaram pelos filtros de qualidade e
+**68** entraram no indice publico. O historico contem **4.081 registros
+brutos** e **3.459 noticias validas**, publicadas de 05/05/2026 a
+16/11/2026. A demonstracao indexa **3.102 noticias**: `Aniversarios` e
+`Falecidos` foram omitidas do
+pacote publico por conterem muitos nomes pessoais. Sao publicados somente
+titulo, categoria, data, URL e vetores/projecoes; o texto integral nao acompanha a
+pagina. Para conter o tamanho do pacote web, a consulta Word2Vec usa os
+5.000 termos mais frequentes do corpus; os vetores das noticias foram
+calculados a partir do vocabulario completo. As noticias recentes mostradas
+nela pertencem ao proprio indice.
+`Destaques` e um rotulo editorial da fonte: 759 noticias validas recebem esse
+rotulo sem outra categoria associada. O tema pode coincidir com eventos,
+transito ou tempo, mas a pagina preserva a categoria recebida e nao replica a
+noticia em outros filtros. A base valida nao tem URLs nem hashes de conteudo
+duplicados; publicacoes parecidas em datas diferentes podem aparecer.
+Em 16/11/2026, as 24 publicacoes de 11/11 foram consultadas novamente na
+API da fonte: as 11 que tinham a categoria `Destaques` continuavam com ela;
+nenhuma das 24 mudou de categoria. A verificacao compara o rotulo da noticia,
+nao sua posicao momentanea na pagina inicial do portal. O registro detalhado
+esta em `reports/destaques_2026-11-11_revisao.json` no ambiente local.
+Nao ha custo de API por consulta; para atualizar o indice, sao necessarios
+acesso ao portal, os pacotes Python declarados e tempo de CPU para o Word2Vec.
+Os arquivos JSON publicados somam cerca de 18 MiB; o primeiro carregamento
+pode demorar em uma conexao movel.
+
+### Atualizar o acervo e regenerar a pagina
+
+Os scripts locais podem coletar publicacoes posteriores a uma data ou ampliar
+ate uma quantidade desejada de noticias publicas. O processo reindexa
+Word2Vec e regenera os graficos e os arquivos da pagina. Uma rotina diaria
+tambem pode ser configurada no servidor local; ela depende do servidor
+aberto, do computador ligado, acesso ao portal e tempo de CPU. O prototipo
+de acompanhamento por palavra-chave compara titulos e categorias ao carregar
+um indice novo, mas nao esta ativo na interface publica. O codigo experimental
+permanece em `web/updates.js` e nao e carregado pela pagina. Nao ha envio por
+email nem notificacao em segundo plano.
+
+Os mesmos fluxos podem ser executados no terminal:
+
+```powershell
+python scripts/atualizar_web.py --recent
+python scripts/atualizar_web.py --since 2026-11-15
+python scripts/atualizar_web.py --target 4000
+```
+
+Com `python web_server.py` em execucao, a rotina diaria local pode ser
+configurada pelo terminal PowerShell:
+
+```powershell
+$url = 'http://127.0.0.1:8765/api/schedule'
+$headers = @{ Origin = 'http://127.0.0.1:8765' }
+Invoke-RestMethod -Uri $url -Method Post -Headers $headers -ContentType 'application/json' -Body '{"active":true,"time":"22:00"}'
+```
+
+Para desativar, envie `'{"active":false}'` no mesmo comando. O servidor deve
+permanecer aberto no horario escolhido. O estado pode ser consultado em
+`http://127.0.0.1:8765/api/status`.
+
+Escolha apenas um comando por execucao. `--recent` usa a data mais recente
+do acervo com um dia de sobreposicao. `--since` percorre todas as paginas
+posteriores a data; se a API falhar, usa listagens HTML. `--target` coleta
+paginas anteriores ao inicio da base ate atingir o total de noticias publicas
+validas, com limite de 200 paginas. Verifique `collection_complete` e
+`public_articles` no `reports/summary.json`. O modelo BERT da etapa antiga
+nao foi recalculado para esta base. Verifique titulos, links e conteudos
+sensiveis antes de publicar o pacote atualizado.
+
+### Tecnicas da Unidade 4
+
+| Tecnologia ou abordagem | Utilizada? | Aplicacao ou justificativa |
+|---|---|---|
+| LLMs e modelos de linguagem | Sim, modelo de linguagem | BERTimbau foi usado localmente como encoder nas etapas anteriores; nao ha LLM generativo na pagina. |
+| Prompt engineering e saidas estruturadas | Nao | Nao ha geracao por prompt no processamento da busca. |
+| RAG e recuperacao | Sim, recuperacao | A pagina recupera noticias; nao gera respostas, portanto nao implementa RAG. |
+| Agentes e ferramentas | Nao | Fora do escopo da demonstracao. |
+| Modelos locais ou quantizados | Sim, locais | Word2Vec treinado no corpus e BERTimbau pre-treinado usado localmente; nao foram quantizados. |
+| Multimodalidade | Nao | O processamento usa texto. |
+| Outras tecnicas avancadas | Sim | Fusao de rankings por RRF; tambem houve clusterizacao e classificacao nas etapas anteriores. |
+
+### Avaliacao e interpretacao
+
+O objetivo de coletar, organizar e recuperar noticias locais foi alcancado
+para o recorte estudado; validacao da busca hibrida continua em andamento.
+A aba "Resultados" usa **3.459 noticias validas** da base atual para medir
+agrupamento com TF-IDF e Word2Vec. O grafico PCA mostra somente as **3.102
+noticias publicas** e a distribuicao por categoria. Silhouette mede a
+separacao dos grupos e pureza mede a predominancia de uma categoria em cada
+grupo. Nenhuma delas mede diretamente a qualidade da busca. Os valores
+atualizados sao exportados para `web/data/results.json`. Nesta base, ambos
+usaram 12 grupos: TF-IDF teve silhouette de **0,106738** e pureza de
+**0,713790**; Word2Vec teve silhouette de **0,326025** e pureza de
+**0,721885**. Word2Vec separou melhor os grupos nessas medidas, mas isso nao
+prova que ordene melhor as noticias na busca. Os pontos PCA sao uma projecao
+de duas dimensoes e conservam apenas parte da variacao dos vetores.
+Frente ao acervo de 11/11 (3.382 noticias validas), a silhouette caiu de
+0,108733 para 0,106738 em TF-IDF e de 0,339059 para 0,326025 em Word2Vec;
+a pureza do TF-IDF subiu de 0,702247 para 0,713790 e a do Word2Vec ficou
+praticamente estavel (0,722058 para 0,721885). As bases diferem, portanto
+essas mudancas nao isolam o efeito do treinamento nem provam melhora da busca.
+
+Como referencia historica, na **base anterior de 736 noticias**, Word2Vec
+com 12 grupos teve silhouette de 0,330926
+e pureza por categoria de 0,743207, acima das representacoes testadas para
+clusterizacao. Na classificacao, BERTimbau com Regressao Logistica obteve
+acuracia de 0,835714 no conjunto de teste, contra 0,807143 para BoW. Isso
+nao significa que BERT tenha melhorado toda tarefa: nas consultas curtas de
+busca, ele foi menos adequado que TF-IDF ou Word2Vec em alguns exemplos.
+O valor novo de Word2Vec nao deve ser interpretado como melhora sobre o
+historico, pois a base e o treinamento mudaram.
+
+A avaliacao de busca disponivel usa tres consultas padrao e proporcao da
+categoria dominante no top-3/top-5. E um indicador exploratorio, nao uma
+metrica definitiva de relevancia. A busca hibrida ainda precisa de consultas
+com julgamentos humanos independentes para medir Precision@5 e MRR, e
+comparar resultados em consultas novas. Na base atual, a consulta "acidente
+no centro" recuperou acidentes nos primeiros resultados, mas tambem noticias
+de locais fora do Centro: reconhecer o tema nao garante o local pedido.
+Limites principais: uma unica fonte,
+categorias editoriais amplas, recorte temporal, termos desconhecidos para
+Word2Vec, dependencia lexical do TF-IDF e possivel perda de informacao pela
+media de vetores. Proximos passos: avaliar a fusao com rotulos humanos,
+recalcular a classificacao na base ampliada e testar um modelo especializado
+em embeddings de frases.
+
+As similaridades de TF-IDF e Word2Vec sao cossenos calculados em espacos
+diferentes. Para uma consulta de uma palavra, TF-IDF compara a importancia
+daquele termo com o vetor esparso de toda a noticia; Word2Vec compara o vetor
+da palavra com a media dos vetores das palavras da noticia. Um valor Word2Vec
+maior que o valor TF-IDF na mesma noticia nao indica qualidade superior. A
+busca hibrida usa as posicoes dos 100 primeiros de cada lista via RRF: soma
+1/(60 + posicao) para cada metodo que recuperou a noticia. O indice RRF nao
+e porcentagem de relevancia nem uma media das similaridades.
+
+### Uso auxiliar de IA generativa nesta etapa
+
+OpenAI Codex (GPT-6) auxiliou na implementacao e revisao da interface, dos
+graficos, do servidor local, dos exportadores, dos coletores e desta
+documentacao. Os pedidos principais foram criar uma busca comparativa e
+hibrida a partir dos indices existentes, ampliar a base, separar as abas e
+permitir atualizacoes por data ou quantidade. A
+busca publicada nao chama nenhum modelo generativo ou servico de IA.
+
 Projeto de PLN para coletar e organizar noticias publicas de Blumenau e regiao
 do Blog do Jaime. Cada registro preserva titulo, conteudo, categoria, data e
 URL, formando uma base atualizavel e rastreavel para limpeza textual, analise
@@ -51,7 +223,10 @@ python projeto_pln.py --agendar-diariamente
 ```
 
 Cria a tarefa `ProjetoPLNNoticiasBlumenau`, que executa `--atualizar` todos os
-dias as 22:00. Para remove-la:
+dias as 22:00. Esse agendamento antigo atualiza a base de PLN, mas nao
+regenera o indice e os graficos da pagina. A rotina local descrita acima roda
+no servidor e regenera todos os arquivos da demonstracao enquanto ele estiver
+aberto. Para remover a tarefa antiga:
 
 ```powershell
 schtasks /Delete /TN "ProjetoPLNNoticiasBlumenau" /F

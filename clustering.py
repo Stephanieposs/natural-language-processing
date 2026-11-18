@@ -57,6 +57,7 @@ WORD2VEC_CLUSTERS_JSONL_PATH = PROCESSED_PATH / "noticias_clusters_word2vec_k12.
 WORD2VEC_CLUSTER_SUMMARY_PATH = REPORTS_PATH / "cluster_summary_word2vec_k12.csv"
 WORD2VEC_CLUSTER_HTML_PATH = REPORTS_PATH / "clusters_word2vec_k12.html"
 WORD2VEC_CLUSTER_3D_HTML_PATH = REPORTS_PATH / "clusters_word2vec_k12_3d.html"
+WORD2VEC_CLUSTER_METADATA_PATH = REPORTS_PATH / "cluster_visualization_word2vec_k12.json"
 K_CANDIDATOS_COMPARACAO = (9, 12, 13)
 
 
@@ -607,6 +608,10 @@ def gerar_visualizacao_word2vec_k12(dataframe=None):
     embeddings = carregar_embeddings_csv(WORD2VEC_EMBEDDINGS_PATH)
     if embeddings.shape[0] != len(dataframe):
         raise RuntimeError("Os embeddings Word2Vec nao correspondem a base atual.")
+    manifesto = carregar_manifest_indices().get("semantic", {})
+    dataset_hash = calcular_hash_base(dataframe)
+    if manifesto.get("dataset_hash") != dataset_hash:
+        raise RuntimeError("Os embeddings Word2Vec nao correspondem a base atual.")
 
     modelo, clusters = treinar_kmeans_com_k(embeddings, 12)
     dataframe["cluster"] = clusters
@@ -677,6 +682,7 @@ def gerar_visualizacao_word2vec_k12(dataframe=None):
 
     resumo = {
         "documents": int(len(dataframe)),
+        "dataset_hash": dataset_hash,
         "representation": "word2vec",
         "selected_clusters": 12,
         "silhouette": round(
@@ -688,6 +694,9 @@ def gerar_visualizacao_word2vec_k12(dataframe=None):
         "html_3d": WORD2VEC_CLUSTER_3D_HTML_PATH.name,
         "summary": WORD2VEC_CLUSTER_SUMMARY_PATH.name,
     }
+    WORD2VEC_CLUSTER_METADATA_PATH.write_text(
+        json.dumps(resumo, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     print("Visualizacao Word2Vec k=12 concluida.")
     print(f"Silhouette: {resumo['silhouette']}")
     print(f"Visualizacao 2D: {WORD2VEC_CLUSTER_HTML_PATH}")

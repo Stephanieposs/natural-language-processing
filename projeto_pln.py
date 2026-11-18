@@ -14,7 +14,7 @@ import sys
 import time
 import unicodedata
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -258,6 +258,243 @@ def collect_articles(total_pages, previous_articles=None):
     return articles, failed_pages, failed_articles
 
 
+def collect_articles_since(since_date, previous_articles, max_pages=200):
+    """Percorre listagens ate passar duas paginas inteiras anteriores ao recorte."""
+    import requests
+
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    previous_by_url = {article["url"]: article for article in previous_articles}
+    collected = []
+    seen_urls = set()
+    seen_pages = set()
+    failed_pages = []
+    failed_articles = 0
+    older_pages = 0
+    complete = False
+    pages_scanned = 0
+
+    for page in range(1, max_pages + 1):
+        pages_scanned = page
+        page_url = listing_url(page)
+        try:
+            links = extract_article_links(download(session, page_url), page_url)
+        except requests.RequestException as error:
+            failed_pages.append(page)
+            print(f"Pagina {page}: erro na listagem ({error})", flush=True)
+            continue
+        signature = tuple(links)
+        if not links or signature in seen_pages:
+            print(f"Pagina {page}: listagem vazia ou repetida; coleta interrompida.", flush=True)
+            break
+        seen_pages.add(signature)
+
+        page_dates = []
+        new_on_page = 0
+        for url in links:
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            article = previous_by_url.get(url)
+            if article is None:
+                try:
+                    article = parse_article(download(session, url), url)
+                except (requests.RequestException, ValueError) as error:
+                    failed_articles += 1
+                    print(f"  Erro em {url}: {error}", flush=True)
+                    continue
+            published = parse_date(article.get("published_at", ""))
+            if published is None:
+                failed_articles += 1
+                print(f"  Data nao encontrada em {url}", flush=True)
+                continue
+            page_dates.append(published.date())
+            if published.date() > since_date and url not in previous_by_url:
+                collected.append(article)
+                new_on_page += 1
+
+        write_jsonl(merge_by_url(previous_articles, collected), RAW_PATH)
+        older_pages = older_pages + 1 if page_dates and max(page_dates) <= since_date else 0
+        print(f"Pagina {page}: {new_on_page} novas; {len(collected)} no recorte.", flush=True)
+        if older_pages >= 2:
+            complete = not failed_pages and failed_articles == 0
+            break
+
+    return collected, failed_pages, failed_articles, pages_scanned, complete
+
+
+def parse_rest_article(post, categories):
+    """Converte uma publicacao da API WordPress para o formato do corpus."""
+    from bs4 import BeautifulSoup
+
+    title_markup = f"<span>{post['title']['rendered']}</span>"
+    title = clean_text(BeautifulSoup(title_markup, "html.parser").get_text(" "))
+    soup = BeautifulSoup(post["content"]["rendered"], "html.parser")
+    for unwanted in soup.select("script, style, nav, form, iframe"):
+        unwanted.decompose()
+    paragraphs = [clean_text(item.get_text(" ", strip=True)) for item in soup.select("p")]
+    content = "\n".join(paragraph for paragraph in paragraphs if paragraph)
+    if not content:
+        content = clean_text(soup.get_text(" ", strip=True))
+    labels = [categories[category_id] for category_id in post["categories"] if category_id in categories]
+    normalized = normalize_for_hash(f"{title} {content}")
+    return {
+        "title": title,
+        "published_at": post["date"],
+        "category": ", ".join(labels) or "Uncategorized",
+        "content": content,
+        "url": post["link"].rstrip("/") + "/",
+        "collected_at": datetime.now(timezone.utc).isoformat(),
+        "content_hash": hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
+        "word_count": len(content.split()),
+    }
+
+
+def collect_articles_since_api(since_date, previous_articles):
+    """Busca todas as paginas publicadas apos a data usando a API do portal."""
+    import requests
+
+    api = "https://blogdojaime.com.br/wp-json/wp/v2"
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    category_response = session.get(
+        f"{api}/categories", params={"per_page": 100, "_fields": "id,name"}, timeout=30
+    )
+    category_response.raise_for_status()
+    categories = {item["id"]: item["name"] for item in category_response.json()}
+    previous_urls = {article["url"] for article in previous_articles}
+    collected = []
+    failed_pages = []
+    failed_articles = 0
+    total_pages = None
+    scanned = 0
+    after = f"{since_date.isoformat()}T23:59:59"
+
+    for page in range(1, 201):
+        scanned = page
+        try:
+            response = session.get(
+                f"{api}/posts",
+                params={
+                    "per_page": 100, "page": page, "after": after,
+                    "_fields": "date,link,title,content,categories",
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
+            posts = response.json()
+        except (requests.RequestException, ValueError) as error:
+            failed_pages.append(page)
+            print(f"Pagina API {page}: {error}", flush=True)
+            break
+        if total_pages is None:
+            total_pages = int(response.headers.get("X-WP-TotalPages", 0))
+            print(f"API: {response.headers.get('X-WP-Total', '?')} publicacoes em {total_pages} paginas.", flush=True)
+            if total_pages > 200:
+                raise RuntimeError("Intervalo excede 200 paginas da API; reduza o periodo.")
+        for post in posts:
+            try:
+                article = parse_rest_article(post, categories)
+            except (KeyError, TypeError, ValueError) as error:
+                failed_articles += 1
+                print(f"  Publicacao invalida na pagina {page}: {error}", flush=True)
+                continue
+            if article["url"] not in previous_urls:
+                collected.append(article)
+                previous_urls.add(article["url"])
+        write_jsonl(merge_by_url(previous_articles, collected), RAW_PATH)
+        print(f"Pagina API {page}/{total_pages}: {len(collected)} noticias novas.", flush=True)
+        time.sleep(DELAY_SECONDS)
+        if page >= total_pages:
+            break
+
+    complete = scanned == total_pages and not failed_pages and failed_articles == 0
+    return collected, failed_pages, failed_articles, scanned, complete
+
+
+def public_article_count(articles):
+    """Conta noticias validas que podem entrar no indice publico da pagina."""
+    valid, _, _ = remove_duplicates_and_short_articles(articles)
+    excluded = {"Aniversários", "Falecidos"}
+    return sum(
+        article.get("category", "").split(",", 1)[0].strip() not in excluded
+        for article in valid
+    )
+
+
+def collect_older_until_api(target_count, previous_articles):
+    """Amplia o historico pela API ate o indice publico atingir o alvo."""
+    import requests
+
+    current_count = public_article_count(previous_articles)
+    if current_count >= target_count:
+        return [], [], 0, 0, True
+    dates = [parse_date(article.get("published_at", "")) for article in previous_articles]
+    dates = [value.date() for value in dates if value]
+    if not dates:
+        raise ValueError("Nao ha data valida no historico para iniciar a ampliacao.")
+    before = (min(dates) + timedelta(days=1)).isoformat() + "T00:00:00"
+    api = "https://blogdojaime.com.br/wp-json/wp/v2"
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    response = session.get(
+        f"{api}/categories", params={"per_page": 100, "_fields": "id,name"}, timeout=30
+    )
+    response.raise_for_status()
+    categories = {item["id"]: item["name"] for item in response.json()}
+    known_urls = {article["url"] for article in previous_articles}
+    collected = []
+    failed_pages = []
+    failed_articles = 0
+    scanned = 0
+    reached = False
+
+    for page in range(1, 201):
+        scanned = page
+        try:
+            response = session.get(
+                f"{api}/posts",
+                params={
+                    "per_page": 100, "page": page, "before": before,
+                    "_fields": "date,link,title,content,categories",
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
+            posts = response.json()
+        except (requests.RequestException, ValueError) as error:
+            failed_pages.append(page)
+            print(f"Pagina antiga API {page}: {error}", flush=True)
+            break
+        if not posts:
+            break
+        for post in posts:
+            try:
+                article = parse_rest_article(post, categories)
+            except (KeyError, TypeError, ValueError) as error:
+                failed_articles += 1
+                print(f"  Publicacao invalida na pagina {page}: {error}", flush=True)
+                continue
+            if article["url"] not in known_urls:
+                collected.append(article)
+                known_urls.add(article["url"])
+        combined = merge_by_url(previous_articles, collected)
+        write_jsonl(combined, RAW_PATH)
+        current_count = public_article_count(combined)
+        print(
+            f"Pagina antiga API {page}: {len(collected)} novas; "
+            f"{current_count}/{target_count} noticias publicaveis.",
+            flush=True,
+        )
+        if current_count >= target_count:
+            reached = True
+            break
+        time.sleep(DELAY_SECONDS)
+
+    complete = reached and not failed_pages and failed_articles == 0
+    return collected, failed_pages, failed_articles, scanned, complete
+
+
 def remove_duplicates_and_short_articles(articles):
     clean_articles = []
     seen_hashes = set()
@@ -289,7 +526,7 @@ def describe(articles):
     urls = [article.get("url", "") for article in articles]
     hashes = [article.get("content_hash", "") for article in articles]
     dates = [parse_date(article.get("published_at", "")) for article in articles]
-    dates = [date for date in dates if date]
+    dates = [value.date() for value in dates if value]
     categories = Counter(article.get("category") or "Sem categoria" for article in articles)
     missing_fields = {
         field: sum(not article.get(field) for article in articles)
@@ -303,8 +540,8 @@ def describe(articles):
         "duplicate_content_hashes": len(hashes) - len(set(hashes)),
         "short_articles": sum(count < MINIMUM_WORDS for count in word_counts),
         "missing_fields": missing_fields,
-        "oldest_publication": min(dates).date().isoformat() if dates else None,
-        "newest_publication": max(dates).date().isoformat() if dates else None,
+        "oldest_publication": min(dates).isoformat() if dates else None,
+        "newest_publication": max(dates).isoformat() if dates else None,
         "word_count": {
             "minimum": min(word_counts) if word_counts else 0,
             "maximum": max(word_counts) if word_counts else 0,
@@ -396,7 +633,7 @@ def processar_nlp(articles):
 
 
 def summarize_period(name, dataframe):
-    dates = pd.to_datetime(dataframe["published_at"], errors="coerce", utc=True)
+    dates = pd.to_datetime(dataframe["published_at"], format="mixed", errors="coerce", utc=True)
     categories = Counter(dataframe["category"].fillna("Sem categoria"))
     terms = Counter(
         token
@@ -420,7 +657,7 @@ def summarize_period(name, dataframe):
 
 def create_temporal_samples(dataframe):
     """Compara os sete dias mais recentes com o periodo anterior."""
-    dates = pd.to_datetime(dataframe["published_at"], errors="coerce", utc=True)
+    dates = pd.to_datetime(dataframe["published_at"], format="mixed", errors="coerce", utc=True)
     newest_date = dates.max().normalize()
     cutoff = newest_date - pd.Timedelta(RECENT_DAYS - 1, unit="D")
 
@@ -467,24 +704,49 @@ def install_daily_schedule():
     print(f"Tarefa do Windows: {TASK_NAME}")
 
 
-def run_pipeline(update_mode=False):
-    previous_articles = read_jsonl(RAW_PATH) if update_mode else []
-    if update_mode and not previous_articles:
+def run_pipeline(update_mode=False, since_date=None, target_public_count=None):
+    updating = update_mode or since_date is not None or target_public_count is not None
+    previous_articles = read_jsonl(RAW_PATH) if updating else []
+    if updating and not previous_articles:
         raise FileNotFoundError(
             "Base inicial nao encontrada. Execute primeiro: python projeto_pln.py"
         )
 
-    pages_requested = UPDATE_PAGES if update_mode else INITIAL_PAGES
-    execution_mode = "atualizacao_incremental" if update_mode else "coleta_inicial"
-    print(
-        f"1/4 - Coletando as ultimas {pages_requested} paginas "
-        f"({execution_mode})...",
-        flush=True,
+    pages_requested = UPDATE_PAGES if updating else INITIAL_PAGES
+    execution_mode = (
+        "ampliacao_historica" if target_public_count is not None else
+        "atualizacao_desde_data" if since_date is not None else
+        "atualizacao_incremental" if update_mode else "coleta_inicial"
     )
-    collected_articles, failed_pages, failed_articles = collect_articles(
-        pages_requested,
-        previous_articles,
-    )
+    if target_public_count is not None:
+        print(f"1/4 - Ampliando o indice publico ate {target_public_count} noticias...", flush=True)
+    elif since_date is not None:
+        print(f"1/4 - Coletando publicacoes apos {since_date}...", flush=True)
+    else:
+        print(
+            f"1/4 - Coletando as ultimas {pages_requested} paginas "
+            f"({execution_mode})...",
+            flush=True,
+        )
+    if target_public_count is not None:
+        collected_articles, failed_pages, failed_articles, pages_requested, complete = (
+            collect_older_until_api(target_public_count, previous_articles)
+        )
+    elif since_date is not None:
+        try:
+            collected_articles, failed_pages, failed_articles, pages_requested, complete = (
+                collect_articles_since_api(since_date, previous_articles)
+            )
+        except (OSError, ValueError) as error:
+            print(f"API indisponivel ({error}); tentando listagens HTML.", flush=True)
+            collected_articles, failed_pages, failed_articles, pages_requested, complete = (
+                collect_articles_since(since_date, previous_articles)
+            )
+    else:
+        collected_articles, failed_pages, failed_articles = collect_articles(
+            pages_requested, previous_articles,
+        )
+        complete = not failed_pages and failed_articles == 0
 
     previous_urls = {article["url"] for article in previous_articles}
     collected_urls = {article["url"] for article in collected_articles}
@@ -492,7 +754,7 @@ def run_pipeline(update_mode=False):
     updated_articles = len(collected_urls & previous_urls)
     raw_articles = (
         merge_by_url(previous_articles, collected_articles)
-        if update_mode
+        if updating
         else collected_articles
     )
 
@@ -513,6 +775,17 @@ def run_pipeline(update_mode=False):
         new_articles,
         updated_articles,
     )
+    summary["collection_complete"] = complete
+    if target_public_count is not None:
+        summary["target_public_articles"] = target_public_count
+        summary["public_articles"] = public_article_count(raw_articles)
+    if since_date is not None:
+        summary["collected_since"] = since_date.isoformat()
+        summary["interval_articles"] = sum(
+            (published := parse_date(article.get("published_at", ""))) is not None
+            and published.date() > since_date
+            for article in raw_articles
+        )
 
     print("\n3/4 - Aplicando o pre-processamento de PLN...", flush=True)
     nlp_dataframe = processar_nlp(processed_articles)
@@ -536,6 +809,8 @@ def run_pipeline(update_mode=False):
     print(f"Paginas concluidas: {pages_requested - len(failed_pages)}/{pages_requested}")
     print(f"Noticias que falharam: {failed_articles}")
     print(f"Noticias novas: {new_articles}")
+    if since_date is not None:
+        print(f"Noticias brutas publicadas apos {since_date}: {summary['interval_articles']}")
     print(f"Noticias existentes atualizadas: {updated_articles}")
     print(f"Noticias brutas no historico: {len(raw_articles)}")
     print(f"Noticias duplicadas removidas: {duplicates}")
@@ -551,6 +826,8 @@ def run_pipeline(update_mode=False):
         f"periodo anterior: {temporal_summary['previous_articles']} noticias"
     )
     print(f"Campos ausentes na base valida: {summary['processed']['missing_fields']}")
+    if not complete:
+        print("Aviso: a coleta nao confirmou cobertura completa do intervalo.")
 
 
 def main():
@@ -559,6 +836,17 @@ def main():
         "--atualizar",
         action="store_true",
         help="Coleta 10 paginas e atualiza a base existente sem duplicar URLs",
+    )
+    parser.add_argument(
+        "--atualizar-desde",
+        metavar="AAAA-MM-DD",
+        help="Percorre as listagens ate a data informada e atualiza a base",
+    )
+    parser.add_argument(
+        "--ampliar-ate",
+        type=int,
+        metavar="TOTAL",
+        help="Busca publicacoes antigas ate haver TOTAL noticias validas para a pagina",
     )
     parser.add_argument(
         "--agendar-diariamente",
@@ -651,6 +939,17 @@ def main():
         help="Metrica usada por --buscar (padrao: cosseno)",
     )
     args = parser.parse_args()
+    if sum((args.atualizar, bool(args.atualizar_desde), args.ampliar_ate is not None)) > 1:
+        parser.error("Use apenas um entre --atualizar, --atualizar-desde e --ampliar-ate.")
+    if args.ampliar_ate is not None and args.ampliar_ate < 1:
+        parser.error("--ampliar-ate deve ser positivo.")
+    try:
+        since_date = (
+            datetime.fromisoformat(args.atualizar_desde).date()
+            if args.atualizar_desde else None
+        )
+    except ValueError:
+        parser.error("--atualizar-desde deve ter formato AAAA-MM-DD.")
 
     if args.agendar_diariamente:
         install_daily_schedule()
@@ -705,7 +1004,11 @@ def main():
 
         analisar_sentimentos()
     else:
-        run_pipeline(update_mode=args.atualizar)
+        run_pipeline(
+            update_mode=args.atualizar,
+            since_date=since_date,
+            target_public_count=args.ampliar_ate,
+        )
 
 
 if __name__ == "__main__":

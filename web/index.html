@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Buscador comparativo de notícias de Blumenau com técnicas de processamento de linguagem natural.">
+  <title>Blumenau em Texto | Busca de notícias</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+  <script src="results.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">B</span><span>Blumenau em Texto</span></div>
+      <nav class="site-tabs" aria-label="Seções da demonstração" role="tablist">
+        <button id="tab-buscar" type="button" role="tab" aria-selected="true" aria-controls="buscar" tabindex="0">Buscar</button>
+        <button id="tab-acervo" type="button" role="tab" aria-selected="false" aria-controls="acervo" tabindex="-1">No acervo</button>
+        <button id="tab-resultados" type="button" role="tab" aria-selected="false" aria-controls="resultados-modelo" tabindex="-1">Resultados</button>
+        <button id="tab-atualizacoes" type="button" role="tab" aria-selected="false" aria-controls="atualizacoes" tabindex="-1">Atualizações e alertas</button>
+        <button id="tab-projeto" type="button" role="tab" aria-selected="false" aria-controls="projeto" tabindex="-1">Sobre o projeto</button>
+      </nav>
+      <a class="header-source" href="https://blogdojaime.com.br/" target="_blank" rel="noopener noreferrer">Fonte das notícias</a>
+    </div>
+  </header>
+
+  <main id="conteudo">
+    <section class="intro container" aria-labelledby="page-title">
+      <p class="eyebrow">Projeto de PLN</p>
+      <div class="intro-line">
+        <div>
+          <h1 id="page-title">Encontre notícias por assunto</h1>
+          <p>Compare busca por palavras e similaridade semântica em um acervo de notícias de Blumenau e região.</p>
+          <p class="authors">Stephanie Possamai · Cristian Monster · Beatriz Mariah · Beatriz Conrat · Julia Welter</p>
+        </div>
+        <div class="snapshot" aria-live="polite"><strong id="document-count">...</strong><span>notícias na demonstração</span><small id="snapshot-range">Carregando acervo</small></div>
+      </div>
+    </section>
+
+    <section class="page-panel" id="buscar" role="tabpanel" aria-labelledby="tab-buscar">
+    <div class="workspace container">
+      <div class="controls">
+        <h2 id="search-title">Buscar no acervo</h2>
+        <form id="search-form">
+          <label for="query">Sua consulta</label>
+          <div class="query-row"><input id="query" type="search" placeholder="Ex.: acidente no centro" autocomplete="off" required maxlength="160"><button type="submit">Buscar</button></div>
+        </form>
+        <div class="examples" aria-label="Exemplos de consulta"><button type="button" data-query="acidente no centro">acidente no centro</button><button type="button" data-query="oktoberfest">oktoberfest</button><button type="button" data-query="chuva em Blumenau">chuva em Blumenau</button></div>
+
+        <div class="control-grid">
+          <div><label for="category">Categoria</label><select id="category"><option value="">Todas</option></select></div>
+          <div><label for="limit">Resultados</label><select id="limit"><option value="5">5</option><option value="10" selected>10</option><option value="20">20</option></select></div>
+        </div>
+        <fieldset class="method-fieldset">
+          <legend>Método de busca</legend>
+          <div class="segmented" role="radiogroup" aria-label="Método de busca" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+            <label><input type="radio" name="method" value="hybrid" checked><span>Híbrida</span></label>
+            <label><input type="radio" name="method" value="tfidf"><span>TF-IDF</span></label>
+            <label><input type="radio" name="method" value="word2vec"><span>Word2Vec</span></label>
+            <label><input type="radio" name="method" value="compare"><span>Comparar</span></label>
+          </div>
+        </fieldset>
+        <div class="method-explainer" aria-live="polite" aria-atomic="true">
+          <h3 id="method-help-title">Híbrida: combina duas buscas</h3>
+          <p id="method-help-text">Combina TF-IDF e Word2Vec pelo índice RRF (fusão recíproca de rankings): soma 1/(60 + posição) de cada lista. Uma notícia em 1º lugar nas duas recebe 2/61 ≈ 0,0328. O índice ordena resultados; não é uma porcentagem nem uma similaridade.</p>
+          <p id="method-help-example">Use para explorar um assunto quando você não sabe quais palavras aparecem nas notícias.</p>
+        </div>
+        <p class="help-text">As pontuações ordenam notícias; não indicam se uma notícia é verdadeira. Os números de métodos diferentes não são diretamente comparáveis.</p>
+      </div>
+
+      <div class="results-panel">
+        <div class="results-head"><div><p class="eyebrow">Resultados</p><h2 id="results-title">Escolha uma consulta</h2></div><span id="result-status" role="status">Índice carregando...</span></div>
+        <div id="results" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="method-guide container" aria-labelledby="method-guide-title">
+      <p class="eyebrow">Entenda a busca</p><h2 id="method-guide-title">O que cada modo faz</h2>
+      <div class="method-guide-grid">
+        <article><h3>TF-IDF</h3><p>Procura palavras da consulta no texto das notícias. Dá mais peso a termos que aparecem em poucos documentos e usa similaridade de cosseno. É útil para nomes, eventos e expressões específicas, como “Oktoberfest”. Se a notícia usa outras palavras, ela pode ficar de fora.</p></article>
+        <article><h3>Word2Vec</h3><p>Representa palavras por vetores aprendidos com o acervo e compara, por cosseno, a média dos vetores da consulta com a média de cada notícia. Pode aproximar assuntos mesmo sem repetir exatamente a consulta. Como usa médias, às vezes traz resultados apenas vagamente relacionados.</p></article>
+        <article><h3>Híbrida</h3><p>Faz as duas buscas e combina os 100 primeiros resultados de cada ranking por Reciprocal Rank Fusion (RRF). Para cada método, soma 1/(60 + posição); uma notícia na 2ª posição recebe 1/62. Uma notícia bem colocada em ambos tende a subir. Essa pontuação indica ordem, não porcentagem de relevância.</p></article>
+        <article><h3>Comparar</h3><p>Mostra TF-IDF e Word2Vec lado a lado para a mesma consulta, categoria e quantidade de resultados. Observe quais títulos aparecem em cada coluna e em que ordem. As pontuações dos dois métodos têm significados diferentes e não devem ser comparadas diretamente.</p></article>
+      </div>
+    </div>
+    </section>
+
+    <section class="page-panel recent-band" id="acervo" role="tabpanel" aria-labelledby="tab-acervo" hidden>
+      <div class="container recent-inner">
+        <div><p class="eyebrow">No acervo</p><h2 id="recent-title">Publicações mais recentes</h2><p>Explore o recorte indexado por categoria, com links para a fonte. Confira a publicação original para obter informações atualizadas.</p><p class="category-note"><strong>Sobre “Destaques”:</strong> é uma categoria editorial da fonte. Uma notícia destacada pode tratar de eventos, trânsito ou outros assuntos, mas aparece uma só vez no acervo e não entra automaticamente no filtro dessas categorias temáticas. Em 16/11, conferimos as 11 notícias dessa categoria publicadas em 11/11: todas ainda tinham o mesmo rótulo na fonte.</p><label for="recent-category">Categoria</label><select id="recent-category"><option value="">Todas</option></select></div>
+        <div><div id="recent-list" class="recent-list"></div><button id="recent-more" class="recent-more" type="button" hidden>Mostrar mais notícias</button></div>
+      </div>
+    </section>
+
+    <section class="page-panel" id="resultados-modelo" role="tabpanel" aria-labelledby="tab-resultados" hidden>
+      <div class="container model-results">
+        <p class="eyebrow">Base atualizada</p><h2>Resultados dos modelos no acervo atual</h2>
+        <p id="model-results-intro">Carregando as métricas e os gráficos do acervo...</p>
+        <div class="current-metrics">
+          <div><strong id="metric-public">—</strong><span>notícias disponíveis na busca</span></div>
+          <div><strong id="metric-tfidf">—</strong><span>silhouette dos grupos TF-IDF</span></div>
+          <div><strong id="metric-word2vec">—</strong><span>silhouette dos grupos Word2Vec</span></div>
+        </div>
+        <p class="chart-explanation">Silhouette mede a separação dos grupos: valores mais altos indicam grupos mais distintos. O agrupamento usa todas as notícias válidas, inclusive as categorias retiradas da demonstração pública. Essas métricas descrevem agrupamento, não a precisão da busca.</p>
+        <p id="current-purity" class="chart-explanation"></p>
+        <div class="chart-grid">
+          <figure class="chart-card cluster-card">
+            <div class="chart-heading"><div><h3>Mapa dos agrupamentos</h3><p>Cada ponto é uma notícia; cores indicam grupos formados automaticamente.</p></div><label for="cluster-method">Representação<select id="cluster-method"><option value="tfidf">TF-IDF</option><option value="word2vec">Word2Vec</option></select></label></div>
+            <svg id="cluster-chart" viewBox="0 0 900 440" role="img" aria-label="Dispersão PCA dos grupos de notícias"></svg>
+            <div id="cluster-legend" class="cluster-legend" aria-label="Cores dos grupos"></div>
+            <figcaption id="cluster-caption">Projeção PCA em duas dimensões.</figcaption>
+          </figure>
+          <figure class="chart-card"><h3>Notícias por categoria</h3><p>Distribuição das notícias incluídas na busca pública.</p><div id="category-chart" class="category-chart"></div><figcaption>Categorias editoriais da fonte. “Destaques” pode reunir assuntos variados; cada notícia é contada uma vez.</figcaption></figure>
+        </div>
+        <p class="chart-explanation">Os pontos próximos no mapa têm representações parecidas na projeção PCA, que conserva apenas parte da informação original. A busca híbrida ainda precisa de consultas avaliadas por pessoas para sabermos se melhora os resultados.</p>
+        <div class="example-note"><h3>Um exemplo de limite da busca</h3><p>Em uma consulta exploratória ao acervo de 11/11/2026, “acidente no centro” trouxe notícias sobre acidentes entre os primeiros resultados, mas também sobre ocorrências fora do Centro. Os métodos reconheceram o assunto sem garantir o local pedido. A ordem pode mudar após cada atualização; confira os títulos e links na aba Buscar.</p></div>
+      </div>
+    </section>
+
+    <section class="page-panel" id="atualizacoes" role="tabpanel" aria-labelledby="tab-atualizacoes" hidden>
+      <div class="container updates-panel">
+        <p class="eyebrow">Como o acervo é mantido</p><h2>Atualizações e alertas</h2>
+        <p>O projeto possui rotinas locais para coletar novas publicações, refazer os índices e acompanhar assuntos de interesse. Esta página mostra uma versão exportada do acervo; a consulta não é em tempo real.</p>
+        <div class="updates-info-grid">
+          <article><h3>Atualização por data ou quantidade</h3><p>No ambiente de desenvolvimento, é possível buscar notícias publicadas após uma data ou ampliar o acervo até uma quantidade desejada. Depois da coleta, os modelos e os gráficos precisam ser regenerados.</p></article>
+          <article><h3>Rotina diária local</h3><p>O servidor do projeto pode executar essa atualização em um horário configurado. Para isso, o computador e o servidor devem permanecer ligados, com acesso ao portal. A rotina não fica ativa automaticamente para quem visita a página.</p></article>
+          <article><h3>Acompanhamento de assuntos</h3><p>Foi criado um protótipo local que compara palavras de interesse com títulos e categorias quando um novo índice é carregado. Ele não envia e-mails, notificações do sistema nem avisos em segundo plano.</p></article>
+        </div>
+        <p class="updates-note">Para executar ou configurar essas rotinas no projeto local, consulte as instruções do README do repositório. O recorte e a data do índice em uso aparecem no topo da página.</p>
+      </div>
+    </section>
+
+    <section class="page-panel" id="projeto" role="tabpanel" aria-labelledby="tab-projeto" hidden>
+    <div class="about-band" aria-labelledby="about-title">
+      <div class="container"><p class="eyebrow">Sobre o projeto</p><h2 id="about-title">Dados, método e limites</h2>
+        <div class="about-grid">
+          <div><h3>Problema e dados</h3><p>Notícias locais se acumulam em categorias amplas. O projeto coleta publicações do Blog do Jaime, remove duplicatas e textos curtos e procura melhorar sua organização e recuperação. A demonstração usa um recorte estático; as categorias Aniversários e Falecidos foram excluídas do pacote público.</p></div>
+          <div><h3>Técnicas e tecnologias</h3><p>TF-IDF mede coincidência de termos; Word2Vec usa vetores treinados no corpus. A combinação híbrida soma posições dos dois rankings por Reciprocal Rank Fusion (RRF). O processamento foi feito em Python com NLTK, spaCy, scikit-learn e Gensim; a interface executa a busca no navegador.</p></div>
+          <div><h3>Limitações</h3><p>O corpus representa somente uma fonte e um período. A versão web inclui os 5.000 termos mais frequentes do vocabulário Word2Vec; termos ausentes podem prejudicar a busca semântica. O pacote de dados tem cerca de 18 MB e pode demorar em redes móveis. TF-IDF depende das palavras presentes e a fusão não foi validada por anotação humana. Não há custo de API por consulta; atualizar o índice exige acesso ao portal e processamento local. Os resultados não são notícias em tempo real.</p></div>
+          <div><h3>Próximos passos</h3><p>Avaliar as três buscas na base ampliada com consultas anotadas por pessoas, usando precisão nos cinco primeiros resultados. Testar outros modelos de frases e comparar custo, tempo de resposta e qualidade.</p></div>
+        </div>
+      </div>
+    </div>
+    </section>
+  </main>
+  <footer class="site-footer"><div class="container footer-inner"><div><strong>Blumenau em Texto</strong><span>Stephanie Possamai, Cristian Monster, Beatriz Mariah, Beatriz Conrat e Julia Welter</span></div><div><span>Fonte: <a href="https://blogdojaime.com.br/" target="_blank" rel="noopener noreferrer">Blog do Jaime</a></span><span>Pesquisa acadêmica, sem vínculo com o portal.</span></div></div></footer>
+</body>
+</html>
