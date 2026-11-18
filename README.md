@@ -14,7 +14,8 @@ ao lado do seletor muda entre Hibrida, TF-IDF, Word2Vec e Comparar. A busca
 roda no navegador, sem conta ou chave externa. O link publico ainda nao foi
 configurado.
 
-Para visualizar localmente, na raiz do repositorio:
+Para visualizar localmente, na raiz do repositorio (com as dependencias
+instaladas):
 
 ```powershell
 python web_server.py
@@ -23,8 +24,67 @@ python web_server.py
 Abra `http://127.0.0.1:8765/`. A aba "Atualizacoes e alertas" e informativa:
 a interface publica nao oferece botoes para executar coleta, agendamento ou
 notificacoes. O servidor local conserva as rotinas de atualizacao. Para
-hospedar apenas a demonstracao publica, basta servir a pasta `web/` como site
-estatico.
+hospedar a busca, o acervo e os resultados sem servidor Python, basta servir
+a pasta `web/` como site estatico. A aba Agente so funciona com o servidor
+local; em hospedagem estatica ela informa que esta indisponivel.
+
+### Agente local de noticias
+
+A aba **Agente** permite informar um assunto, escolher relatorio diario ou
+semanal, definir horario e e-mail, gerar uma previa e ativar o envio local.
+O servidor usa os mesmos indices da aba Buscar (TF-IDF, Word2Vec e RRF) e
+seleciona ate oito noticias do ultimo dia ou dos ultimos sete dias do acervo.
+O ranking prioriza pertinencia e desempata por data. Usa um limiar exploratorio
+para evitar resultados vagamente relacionados. Para buscas por Oktoberfest ou
+Sommerfest, exige mencao do evento no titulo ou na categoria, evitando
+mencoes laterais no corpo da noticia. O termo "Blumenau" e ignorado no agente
+quando ha outro termo pesquisavel, pois quase todo o acervo se refere a cidade.
+Envia ao Gemini titulo, data, URL e ate 1.800 caracteres do texto de cada
+noticia selecionada. O prompt pede resumo, ate quatro destaques e observacao
+em JSON estruturado, com numeros das fontes de cada destaque. O servidor
+valida as referencias e monta o e-mail em HTML (titulo, periodo, destaques e
+fontes clicaveis), com alternativa em texto simples. Noticias sem relacao
+direta devem ser descartadas; se nao houver destaques, nao ha envio. A chamada
+usa `store=false` e limita a saida a 1.200 tokens. A selecao e a redacao ainda
+precisam de verificacao humana.
+
+Copie `.env.example` para `.env` na instalacao local e preencha
+`GEMINI_API_KEY` com a chave do Google AI Studio. O modelo inicial
+e `gemini-3.1-flash-lite`, ajustavel em `GEMINI_MODEL`. Para enviar, informe
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM` e, se o servidor exigir autenticacao,
+`SMTP_USER` e `SMTP_PASSWORD`. Porta 587 usa STARTTLS; porta 465 usa SSL.
+`SMTP_REQUIRE_AUTH=1` exige usuario e senha; para um relay SMTP local
+autorizado sem autenticacao, use `SMTP_REQUIRE_AUTH=0`.
+O envio implementado usa autenticacao SMTP por usuario e senha ou um relay
+local autorizado; nao implementa OAuth2 para contas Outlook.com.
+Para Gmail, use `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`,
+`SMTP_REQUIRE_AUTH=1` e o mesmo endereco Gmail em `SMTP_USER` e `SMTP_FROM`.
+Em `SMTP_PASSWORD`, coloque uma senha de aplicativo gerada na Conta do Google,
+nao a senha usada para entrar no Gmail. A opcao exige verificacao em duas
+etapas e pode nao estar disponivel em contas de trabalho ou escola. Consulte
+as [instrucoes do Google](https://support.google.com/accounts/answer/185833?hl=pt)
+e as [configuracoes SMTP](https://support.google.com/mail/answer/7104828?hl=pt-br).
+Credenciais e enderecos cadastrados ficam apenas no computador local:
+`.env` e `data/processed/agent_subscription.json` nao entram no Git.
+Nunca coloque a chave no JavaScript, no HTML ou em um commit.
+
+Execute `python web_server.py` e abra a aba Agente. **Gerar previa** seleciona
+noticias do ultimo dia ou dos ultimos sete dias da data do indice publicado;
+sem a chave, mostra apenas as fontes selecionadas. **Ativar envio** salva a
+regra no servidor local. O envio automatico exige servidor ligado, Gemini e
+SMTP configurados, e indice atualizado no proprio dia. Configure a rotina de
+atualizacao antes do horario do agente. O horario usa o fuso do computador;
+se nao houver noticias novas pertinentes, nenhum e-mail e enviado. A previa
+gerada pode ser enviada uma vez por e-mail em ate 15 minutos. Esta versao
+aceita um acompanhamento local por vez; nao implementa cadastro publico de
+usuarios, confirmacao de e-mail ou hospedagem do backend. O agendamento faz
+uma tentativa por dia; uma falha nao e reenviada automaticamente no mesmo dia.
+
+O Gemini e acessado pela API REST Interactions do Google; o custo e a
+disponibilidade dependem da cota e do plano associados a chave. Consulte a
+[documentacao oficial do Gemini](https://ai.google.dev/gemini-api/docs/get-started)
+para configurar o acesso. A aplicacao nao envia e-mail nem faz chamada ao
+Gemini enquanto as respectivas opcoes nao forem usadas ou agendadas.
 
 O corpus foi ampliado em 11/11/2026: depois de coletar as publicacoes
 posteriores a 21/09, foram obtidas **1.990 publicacoes anteriores** em 20
@@ -50,7 +110,8 @@ API da fonte: as 11 que tinham a categoria `Destaques` continuavam com ela;
 nenhuma das 24 mudou de categoria. A verificacao compara o rotulo da noticia,
 nao sua posicao momentanea na pagina inicial do portal. O registro detalhado
 esta em `reports/destaques_2026-11-11_revisao.json` no ambiente local.
-Nao ha custo de API por consulta; para atualizar o indice, sao necessarios
+Nao ha custo de API na busca pelo navegador; o agente com Gemini pode consumir
+cota ou gerar custos. Para atualizar o indice, sao necessarios
 acesso ao portal, os pacotes Python declarados e tempo de CPU para o Word2Vec.
 Os arquivos JSON publicados somam cerca de 18 MiB; o primeiro carregamento
 pode demorar em uma conexao movel.
@@ -64,8 +125,9 @@ tambem pode ser configurada no servidor local; ela depende do servidor
 aberto, do computador ligado, acesso ao portal e tempo de CPU. O prototipo
 de acompanhamento por palavra-chave compara titulos e categorias ao carregar
 um indice novo, mas nao esta ativo na interface publica. O codigo experimental
-permanece em `web/updates.js` e nao e carregado pela pagina. Nao ha envio por
-email nem notificacao em segundo plano.
+permanece em `web/updates.js` e nao e carregado pela pagina. Esse prototipo
+nao envia e-mail nem notificacao em segundo plano; o agente local descrito
+acima usa outro fluxo, com Gemini e SMTP.
 
 Os mesmos fluxos podem ser executados no terminal:
 
@@ -101,10 +163,10 @@ sensiveis antes de publicar o pacote atualizado.
 
 | Tecnologia ou abordagem | Utilizada? | Aplicacao ou justificativa |
 |---|---|---|
-| LLMs e modelos de linguagem | Sim, modelo de linguagem | BERTimbau foi usado localmente como encoder nas etapas anteriores; nao ha LLM generativo na pagina. |
-| Prompt engineering e saidas estruturadas | Nao | Nao ha geracao por prompt no processamento da busca. |
-| RAG e recuperacao | Sim, recuperacao | A pagina recupera noticias; nao gera respostas, portanto nao implementa RAG. |
-| Agentes e ferramentas | Nao | Fora do escopo da demonstracao. |
+| LLMs e modelos de linguagem | Sim | BERTimbau foi usado localmente como encoder; o agente local usa Gemini por API para redigir relatorios quando configurado. |
+| Prompt engineering e saidas estruturadas | Sim | O agente pede JSON com resumo, destaques e numeros de fontes, valida as referencias e formata o e-mail no servidor. |
+| RAG e recuperacao | Sim | O agente recupera noticias por TF-IDF, Word2Vec e RRF e envia trechos como contexto ao Gemini para gerar um relatorio fundamentado. |
+| Agentes e ferramentas | Sim, fluxo local | O servidor combina busca, geracao e envio SMTP agendado; nao usa planejamento autonomo do LLM. |
 | Modelos locais ou quantizados | Sim, locais | Word2Vec treinado no corpus e BERTimbau pre-treinado usado localmente; nao foram quantizados. |
 | Multimodalidade | Nao | O processamento usa texto. |
 | Outras tecnicas avancadas | Sim | Fusao de rankings por RRF; tambem houve clusterizacao e classificacao nas etapas anteriores. |
@@ -169,8 +231,8 @@ OpenAI Codex (GPT-6) auxiliou na implementacao e revisao da interface, dos
 graficos, do servidor local, dos exportadores, dos coletores e desta
 documentacao. Os pedidos principais foram criar uma busca comparativa e
 hibrida a partir dos indices existentes, ampliar a base, separar as abas e
-permitir atualizacoes por data ou quantidade. A
-busca publicada nao chama nenhum modelo generativo ou servico de IA.
+permitir atualizacoes por data ou quantidade. A busca convencional nao chama
+modelo generativo; a aba Agente usa Gemini quando a chave esta configurada.
 
 Projeto de PLN para coletar e organizar noticias publicas de Blumenau e regiao
 do Blog do Jaime. Cada registro preserva titulo, conteudo, categoria, data e

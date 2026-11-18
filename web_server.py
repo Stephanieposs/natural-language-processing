@@ -11,6 +11,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import agent_service
+
 
 ROOT = Path(__file__).resolve().parent
 RUNNER = ROOT / "scripts" / "atualizar_web.py"
@@ -87,7 +89,12 @@ def run_scheduled_if_due(now=None):
 
 def schedule_loop():
     while True:
-        run_scheduled_if_due()
+        try:
+            run_scheduled_if_due()
+            if not job.status()["running"]:
+                agent_service.run_due()
+        except Exception as error:
+            print(f"Falha na rotina local: {type(error).__name__}", flush=True)
         threading.Event().wait(15)
 
 
@@ -107,6 +114,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if urlsplit(self.path).path == "/api/status":
             self.json_response(200, {**job.status(), **schedule_status(), "local_server": True})
+        elif urlsplit(self.path).path == "/api/agent/status":
+            self.json_response(200, agent_service.status())
         else:
             super().do_GET()
 
@@ -125,7 +134,15 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(payload, dict):
                 raise ValueError("O corpo deve ser um objeto JSON.")
             route = urlsplit(self.path).path
-            if route == "/api/update":
+            if route == "/api/agent/preview":
+                self.json_response(200, agent_service.preview(payload))
+            elif route == "/api/agent/save":
+                self.json_response(200, {"subscription": agent_service.save_subscription(payload)})
+            elif route == "/api/agent/disable":
+                self.json_response(200, {"subscription": agent_service.disable_subscription()})
+            elif route == "/api/agent/send":
+                self.json_response(200, agent_service.send_preview(payload))
+            elif route == "/api/update":
                 if payload.get("mode") == "since":
                     since = date.fromisoformat(payload["since"])
                     if since > date.today():
@@ -160,6 +177,11 @@ class Handler(SimpleHTTPRequestHandler):
                 self.json_response(404, {"error": "Rota inexistente."})
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             self.json_response(400, {"error": str(error)})
+        except RuntimeError as error:
+            self.json_response(503, {"error": str(error)})
+        except Exception as error:
+            print(f"Falha na requisicao local: {type(error).__name__}", flush=True)
+            self.json_response(502, {"error": "Serviço externo indisponível. Consulte o terminal do servidor."})
 
 
 def main():

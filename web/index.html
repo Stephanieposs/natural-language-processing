@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
   <script src="results.js" defer></script>
+  <script src="agent.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
@@ -19,6 +20,7 @@
         <button id="tab-buscar" type="button" role="tab" aria-selected="true" aria-controls="buscar" tabindex="0">Buscar</button>
         <button id="tab-acervo" type="button" role="tab" aria-selected="false" aria-controls="acervo" tabindex="-1">No acervo</button>
         <button id="tab-resultados" type="button" role="tab" aria-selected="false" aria-controls="resultados-modelo" tabindex="-1">Resultados</button>
+        <button id="tab-agente" type="button" role="tab" aria-selected="false" aria-controls="agente" tabindex="-1">Agente</button>
         <button id="tab-atualizacoes" type="button" role="tab" aria-selected="false" aria-controls="atualizacoes" tabindex="-1">Atualizações e alertas</button>
         <button id="tab-projeto" type="button" role="tab" aria-selected="false" aria-controls="projeto" tabindex="-1">Sobre o projeto</button>
       </nav>
@@ -119,6 +121,37 @@
       </div>
     </section>
 
+    <section class="page-panel" id="agente" role="tabpanel" aria-labelledby="tab-agente" hidden>
+      <div class="container agent-panel">
+        <p class="eyebrow">Relatório personalizado</p><h2>Agente de notícias</h2>
+        <p>Escolha um assunto. O agente usa a busca híbrida para encontrar as notícias mais recentes do período, prepara um relatório com destaques e links para as fontes e permite enviar uma cópia de teste por e-mail.</p>
+        <div class="agent-layout">
+          <div class="agent-form-card">
+            <h3>Seu acompanhamento</h3>
+            <form id="agent-form">
+              <label for="agent-area">Área ou assunto</label>
+              <input id="agent-area" name="area" type="text" placeholder="Ex.: mobilidade em Blumenau" maxlength="120" required>
+              <div class="agent-field-grid">
+                <div><label for="agent-frequency">Frequência</label><select id="agent-frequency" name="frequency"><option value="daily">Diário</option><option value="weekly" selected>Semanal</option></select></div>
+                <div><label for="agent-hour">Horário local</label><input id="agent-hour" name="hour" type="time" value="20:30" required></div>
+              </div>
+              <div id="agent-weekday-row"><label for="agent-weekday">Dia da semana</label><select id="agent-weekday" name="weekday"><option value="0">Segunda-feira</option><option value="1">Terça-feira</option><option value="2">Quarta-feira</option><option value="3">Quinta-feira</option><option value="4">Sexta-feira</option><option value="5">Sábado</option><option value="6">Domingo</option></select></div>
+              <label for="agent-email">E-mail de destino</label><input id="agent-email" name="email" type="email" placeholder="voce@exemplo.com" autocomplete="email" required>
+              <div class="agent-actions"><button id="agent-preview-button" type="button">Gerar prévia</button><button id="agent-save-button" type="submit">Ativar envio</button><button id="agent-disable-button" type="button" class="secondary">Desativar</button></div>
+            </form>
+            <p id="agent-status" class="agent-status" role="status">Verificando o servidor local...</p>
+            <p class="agent-note">O agendamento depende do servidor e do computador ligados. Atualize o acervo antes do horário escolhido. O boletim semanal considera os últimos sete dias do acervo e o diário considera o dia mais recente.</p>
+          </div>
+          <div class="agent-preview-card">
+            <h3>Prévia do relatório</h3><p id="agent-period" class="agent-period">Escolha um assunto e clique em “Gerar prévia”.</p>
+            <div id="agent-report" class="agent-report" aria-live="polite"></div>
+            <div id="agent-sources" class="agent-sources"></div>
+            <button id="agent-send-button" type="button" hidden>Enviar esta prévia por e-mail</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="page-panel" id="atualizacoes" role="tabpanel" aria-labelledby="tab-atualizacoes" hidden>
       <div class="container updates-panel">
         <p class="eyebrow">Como o acervo é mantido</p><h2>Atualizações e alertas</h2>
@@ -126,7 +159,7 @@
         <div class="updates-info-grid">
           <article><h3>Atualização por data ou quantidade</h3><p>No ambiente de desenvolvimento, é possível buscar notícias publicadas após uma data ou ampliar o acervo até uma quantidade desejada. Depois da coleta, os modelos e os gráficos precisam ser regenerados.</p></article>
           <article><h3>Rotina diária local</h3><p>O servidor do projeto pode executar essa atualização em um horário configurado. Para isso, o computador e o servidor devem permanecer ligados, com acesso ao portal. A rotina não fica ativa automaticamente para quem visita a página.</p></article>
-          <article><h3>Acompanhamento de assuntos</h3><p>Foi criado um protótipo local que compara palavras de interesse com títulos e categorias quando um novo índice é carregado. Ele não envia e-mails, notificações do sistema nem avisos em segundo plano.</p></article>
+          <article><h3>Acompanhamento de assuntos</h3><p>O protótipo de alertas por palavra-chave compara títulos e categorias no navegador. Para receber um relatório por e-mail no servidor local, configure a aba Agente.</p></article>
         </div>
         <p class="updates-note">Para executar ou configurar essas rotinas no projeto local, consulte as instruções do README do repositório. O recorte e a data do índice em uso aparecem no topo da página.</p>
       </div>
@@ -137,8 +170,8 @@
       <div class="container"><p class="eyebrow">Sobre o projeto</p><h2 id="about-title">Dados, método e limites</h2>
         <div class="about-grid">
           <div><h3>Problema e dados</h3><p>Notícias locais se acumulam em categorias amplas. O projeto coleta publicações do Blog do Jaime, remove duplicatas e textos curtos e procura melhorar sua organização e recuperação. A demonstração usa um recorte estático; as categorias Aniversários e Falecidos foram excluídas do pacote público.</p></div>
-          <div><h3>Técnicas e tecnologias</h3><p>TF-IDF mede coincidência de termos; Word2Vec usa vetores treinados no corpus. A combinação híbrida soma posições dos dois rankings por Reciprocal Rank Fusion (RRF). O processamento foi feito em Python com NLTK, spaCy, scikit-learn e Gensim; a interface executa a busca no navegador.</p></div>
-          <div><h3>Limitações</h3><p>O corpus representa somente uma fonte e um período. A versão web inclui os 5.000 termos mais frequentes do vocabulário Word2Vec; termos ausentes podem prejudicar a busca semântica. O pacote de dados tem cerca de 18 MB e pode demorar em redes móveis. TF-IDF depende das palavras presentes e a fusão não foi validada por anotação humana. Não há custo de API por consulta; atualizar o índice exige acesso ao portal e processamento local. Os resultados não são notícias em tempo real.</p></div>
+          <div><h3>Técnicas e tecnologias</h3><p>TF-IDF mede coincidência de termos; Word2Vec usa vetores treinados no corpus. A combinação híbrida soma posições dos dois rankings por Reciprocal Rank Fusion (RRF). O processamento foi feito em Python com NLTK, spaCy, scikit-learn e Gensim; a interface executa a busca no navegador. O agente local usa um modelo de linguagem para redigir relatórios baseados nas notícias recuperadas.</p></div>
+          <div><h3>Limitações</h3><p>O corpus representa somente uma fonte e um período. A versão web inclui os 5.000 termos mais frequentes do vocabulário Word2Vec; termos ausentes podem prejudicar a busca semântica. O pacote de dados tem cerca de 18 MB e pode demorar em redes móveis. TF-IDF depende das palavras presentes e a fusão não foi validada por anotação humana. O agente depende do servidor local e de um acervo atualizado; a geração do relatório pode consumir cota de um serviço externo. Os resultados não são notícias em tempo real.</p></div>
           <div><h3>Próximos passos</h3><p>Avaliar as três buscas na base ampliada com consultas anotadas por pessoas, usando precisão nos cinco primeiros resultados. Testar outros modelos de frases e comparar custo, tempo de resposta e qualidade.</p></div>
         </div>
       </div>
