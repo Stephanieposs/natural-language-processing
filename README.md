@@ -18,7 +18,6 @@ o processamento; as tarefas de PLN ficam em modulos separados.
 - [Tecnicas avancadas de PLN](#tecnicas-da-unidade-4)
 - [Avaliacao, resultados e limitacoes](#avaliacao-e-interpretacao)
 - [Instalacao e execucao do pipeline completo](#instalacao)
-- [Uso auxiliar de IA](#uso-auxiliar-de-ia-generativa-nesta-etapa)
 
 ## Como rodar a aplicacao
 
