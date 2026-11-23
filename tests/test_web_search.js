@@ -12,6 +12,7 @@ vm.runInContext(core, context);
 const catalog = load("catalog.json");
 const lexical = load("tfidf.json");
 const semantic = load("word2vec.json");
+const modelResults = load("results.json");
 context.catalog = catalog;
 context.lexical = lexical;
 context.semantic = semantic;
@@ -35,6 +36,10 @@ function results(query, method) {
 assert.equal(catalog.documents.length, catalog.published_documents);
 assert.ok(catalog.documents.length > 1000);
 assert.equal(semantic.document_vectors.length, catalog.documents.length);
+assert.ok(catalog.documents.every((item) => !/^falecidos nas /i.test(item.title)));
+assert.equal(modelResults.word2vec_public_10.clusters, 10);
+assert.equal(modelResults.word2vec_public_10.points.length, catalog.documents.length);
+assert.ok(modelResults.word2vec_public_10.minimum_cluster_size >= 10);
 assert.ok(results("acidente no centro", "tfidf").some((title) => /acidente|colisão|ferid/i.test(title)));
 assert.ok(results("acidente no centro", "word2vec").some((title) => /acidente|colisão|ferid/i.test(title)));
 assert.ok(results("oktoberfest", "tfidf").some((title) => /Oktoberfest/i.test(title)));

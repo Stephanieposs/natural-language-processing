@@ -8,10 +8,10 @@ e Julia Welter.
 | Aspecto | Resultado nesta versao |
 |---|---|
 | Problema | Organizar e recuperar noticias locais publicadas em categorias editoriais amplas. |
-| Dados | Blog do Jaime: 4.081 registros coletados, 3.459 noticias validas apos limpeza e 3.102 noticias no indice publico. |
+| Dados | Blog do Jaime: 4.081 registros coletados, 3.459 noticias validas apos limpeza e 3.100 noticias no indice publico. |
 | Demonstracao | Busca TF-IDF, Word2Vec, hibrida e comparacao lado a lado; aba de resultados; agente local que gera boletins e envia por e-mail. |
 | Tecnicas | TF-IDF, Word2Vec, fusao RRF, K-Means, PCA e geracao fundamentada em noticias recuperadas com Gemini. |
-| Evidencias | No agrupamento com 12 grupos, Word2Vec teve silhouette 0,326 e pureza 0,722; TF-IDF teve 0,107 e 0,714. Essas medidas nao avaliam diretamente a busca. |
+| Evidencias | No experimento original com 12 grupos e a base valida completa, Word2Vec teve silhouette 0,326 e pureza 0,722; TF-IDF teve 0,107 e 0,714. A alternativa Word2Vec com 10 grupos no recorte publico teve 0,293 e 0,692. Essas medidas nao avaliam diretamente a busca. |
 | Limites | Uma fonte, recorte temporal, categorias amplas e ausencia de julgamentos humanos de relevancia. O agente depende de servidor local e de acervo atualizado. |
 
 Para apresentar: busque `acidente no centro` e alterne entre os quatro metodos;
@@ -22,15 +22,19 @@ publicados como site estatico, enquanto o agente requer servidor Python.
 
 ### Visualizacao 2D dos clusters
 
-![Projecao PCA em duas dimensoes de 3.102 noticias publicas, coloridas por 12 clusters Word2Vec](docs/figures/clusters_word2vec_2d.png)
+![Projecao PCA em duas dimensoes de 3.100 noticias publicas, coloridas por 10 clusters Word2Vec](docs/figures/clusters_word2vec_2d.png)
 
 Cada ponto representa uma noticia do indice publico; a cor representa o grupo
-atribuido pelo K-Means, nao a categoria editorial. Os dois eixos PCA explicam
-28,4% da variacao dos vetores. As metricas de silhouette e pureza acima foram
-calculadas nas 3.459 noticias validas, antes do recorte publico. A imagem e
-gerada a partir de `web/data/results.json` com
-`python scripts/gerar_imagem_clusters_readme.py`; atualize-a apos reindexar o
-acervo. A aba **Resultados** permite explorar os pontos interativamente.
+atribuido pelo K-Means, nao a categoria editorial. Os 10 grupos foram treinados
+apenas nas 3.100 noticias publicas, e o menor contem 102 noticias. As
+coordenadas PCA foram calculadas na base valida completa; os dois eixos
+explicam 28,4% da variacao desses vetores. O agrupamento publico com 10 grupos
+teve silhouette **0,293064** e pureza **0,691613**. No mesmo recorte com 12
+grupos, os valores foram **0,299038** e **0,694516**; portanto a reducao para
+10 grupos equilibrou os tamanhos, mas nao melhorou essas metricas. O
+experimento original de 12 grupos na base completa permanece para comparacao.
+A imagem vem de `web/data/results.json`, e a aba **Resultados** permite
+alternar entre as duas versoes do Word2Vec e o agrupamento TF-IDF original.
 
 ## Aplicacao web (versao de demonstracao)
 
@@ -121,9 +125,10 @@ O acervo foi formado por coletas e atualizacoes na API publica do Blog do
 Jaime. O processamento reuniu publicacoes recentes e anteriores, removeu
 textos curtos e duplicatas e regenerou os indices de busca e os graficos.
 O historico contem **4.081 registros brutos**, dos quais **3.459 noticias
-passaram pelos filtros de qualidade**. A demonstracao indexa **3.102 noticias**:
+passaram pelos filtros de qualidade**. A demonstracao indexa **3.100 noticias**:
 as categorias `Aniversarios` e `Falecidos` foram excluidas do pacote publico
-por conterem muitos nomes pessoais.
+por conterem muitos nomes pessoais. Duas listas de falecimentos com categoria
+`Uncategorized` tambem foram retiradas pelo titulo.
 
 A pagina publica titulo, categoria, data, URL e vetores/projecoes; o texto
 integral nao acompanha o site. A busca Word2Vec usa os **5.000 termos mais
@@ -204,9 +209,9 @@ sensiveis antes de publicar o pacote atualizado.
 
 O objetivo de coletar, organizar e recuperar noticias locais foi alcancado
 para o recorte estudado; validacao da busca hibrida continua em andamento.
-A aba "Resultados" usa **3.459 noticias validas** da base atual para medir
-agrupamento com TF-IDF e Word2Vec. O grafico PCA mostra somente as **3.102
-noticias publicas** e a distribuicao por categoria. Silhouette mede a
+A aba "Resultados" conserva as metricas originais calculadas nas **3.459
+noticias validas** com TF-IDF e Word2Vec. Os graficos exibem as **3.100
+noticias publicas**. Silhouette mede a
 separacao dos grupos e pureza mede a predominancia de uma categoria em cada
 grupo. Nenhuma delas mede diretamente a qualidade da busca. Os valores
 atualizados sao exportados para `web/data/results.json`. Nesta base, ambos
@@ -215,6 +220,16 @@ usaram 12 grupos: TF-IDF teve silhouette de **0,106738** e pureza de
 **0,721885**. Word2Vec separou melhor os grupos nessas medidas, mas isso nao
 prova que ordene melhor as noticias na busca. Os pontos PCA sao uma projecao
 de duas dimensoes e conservam apenas parte da variacao dos vetores.
+Na base completa, o grupo 2 do Word2Vec reunia 201 noticias (194 de
+`Aniversarios`) e o grupo 9, 163 (161 de `Falecidos`). Depois do filtro
+publico, restavam 7 e 2 pontos nesses grupos; as duas listas de falecimentos
+classificadas como `Uncategorized` foram retiradas do indice publico. A
+opcao alternativa da pagina reagrupa somente as noticias publicas em 10 grupos.
+O menor tem 102 noticias. Em comparacao com 12 grupos treinados no mesmo
+recorte publico, a silhouette passou de 0,299038 para 0,293064 e a pureza
+de 0,694516 para 0,691613. A distribuicao ficou mais equilibrada, sem
+melhora nessas metricas. Os valores da alternativa e os da base completa
+usam conjuntos diferentes e nao devem ser comparados diretamente.
 Frente ao acervo de 11/11 (3.382 noticias validas), a silhouette caiu de
 0,108733 para 0,106738 em TF-IDF e de 0,339059 para 0,326025 em Word2Vec;
 a pureza do TF-IDF subiu de 0,702247 para 0,713790 e a do Word2Vec ficou

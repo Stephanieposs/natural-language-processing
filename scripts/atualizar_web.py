@@ -59,6 +59,7 @@ def main():
     from clustering import gerar_visualizacao_word2vec_k12
     from scripts.exportar_web import export as export_search
     from scripts.exportar_resultados_web import export as export_results
+    from scripts.gerar_imagem_clusters_readme import main as gerar_imagem_readme
 
     print("Reindexando Word2Vec...", flush=True)
     indexar_busca(incluir_bert=False)
@@ -66,6 +67,7 @@ def main():
     gerar_visualizacao_word2vec_k12()
     export_search()
     export_results()
+    gerar_imagem_readme()
     print("Pagina atualizada. Recarregue o navegador.", flush=True)
 
 

@@ -1,4 +1,4 @@
-"""Gera a imagem 2D dos clusters Word2Vec usada no README."""
+"""Gera a imagem 2D dos dez clusters Word2Vec publicos usada no README."""
 
 import json
 from pathlib import Path
@@ -20,7 +20,7 @@ COLORS = [
 
 def main():
     data = json.loads(SOURCE.read_text(encoding="utf-8"))
-    result = data["word2vec"]
+    result = data["word2vec_public_10"]
     points = result["points"]
     fig, ax = plt.subplots(figsize=(11, 7.3), dpi=170)
     fig.patch.set_facecolor("#f8faf9")
@@ -55,8 +55,8 @@ def main():
               frameon=False, fontsize=9, markerscale=1.6, columnspacing=1.4)
     explained = f"{sum(result['pca_variance']) * 100:.1f}".replace(".", ",")
     fig.text(0.08, 0.025,
-             f"Cada ponto representa uma notícia. As cores indicam grupos, não categorias. "
-             f"Os dois eixos mostram {explained}% da variação dos vetores.",
+             f"K-Means treinado no recorte público; PCA da base válida. Cores indicam grupos, "
+             f"não categorias. Os eixos mostram {explained}% da variação.",
              fontsize=9, color="#52616a")
     fig.subplots_adjust(left=0.09, right=0.985, top=0.84, bottom=0.26)
 

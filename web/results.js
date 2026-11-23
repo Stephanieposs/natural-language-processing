@@ -53,8 +53,12 @@ function renderClusterChart(method) {
     legend.append(item);
   }
   chart.setAttribute("aria-label", `Projeção PCA de ${points.length} notícias em ${clusters} grupos por ${method === "tfidf" ? "TF-IDF" : "Word2Vec"}`);
+  const projection = `PCA 1 e PCA 2 explicam ${((variance[0] + variance[1]) * 100).toFixed(1).replace(".", ",")}% da variação dos vetores.`;
+  const detail = method === "word2vec_public_10"
+    ? `Reagrupamento das ${points.length.toLocaleString("pt-BR")} notícias públicas: silhouette ${modelResults[method].silhouette.toFixed(3).replace(".", ",")}, pureza ${modelResults[method].purity.toFixed(3).replace(".", ",")} e menor grupo com ${modelResults[method].minimum_cluster_size} notícias.`
+    : "Grupos treinados na base válida completa; as categorias excluídas do site podem deixar grupos pequenos neste recorte.";
   document.getElementById("cluster-caption").textContent =
-    `${clusters} grupos · PCA 1 e PCA 2 explicam ${((variance[0] + variance[1]) * 100).toFixed(1).replace(".", ",")}% da variação dos vetores. Passe o cursor sobre um ponto para ver o título.`;
+    `${clusters} grupos · ${projection} ${detail} Passe o cursor sobre um ponto para ver o título.`;
 }
 
 function renderCategoryChart() {
@@ -89,8 +93,8 @@ async function loadModelResults() {
     document.getElementById("current-purity").textContent =
       `Pureza por categoria: TF-IDF ${modelResults.tfidf.purity.toFixed(3).replace(".", ",")} e Word2Vec ${modelResults.word2vec.purity.toFixed(3).replace(".", ",")}. É a proporção de notícias da categoria predominante em cada grupo, ponderada pelo tamanho dos grupos; categorias editoriais amplas limitam sua interpretação.`;
     document.getElementById("model-results-intro").textContent =
-      `Métricas e gráficos recalculados para ${modelResults.source_documents.toLocaleString("pt-BR")} notícias válidas até ${new Intl.DateTimeFormat("pt-BR").format(new Date(`${modelResults.snapshot_date}T12:00:00`))}. A busca pública contém ${modelResults.published_documents.toLocaleString("pt-BR")} delas.`;
-    renderClusterChart("tfidf");
+      `Métricas originais calculadas com ${modelResults.source_documents.toLocaleString("pt-BR")} notícias válidas até ${new Intl.DateTimeFormat("pt-BR").format(new Date(`${modelResults.snapshot_date}T12:00:00`))}. A busca pública contém ${modelResults.published_documents.toLocaleString("pt-BR")} delas; a opção Word2Vec com 10 grupos foi treinada somente nesse recorte.`;
+    renderClusterChart(document.getElementById("cluster-method").value);
     renderCategoryChart();
   } catch (error) {
     console.error(error);

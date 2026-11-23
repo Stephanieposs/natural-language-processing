@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PROCESSED = ROOT / "data" / "processed"
 OUTPUT = ROOT / "web" / "data"
 EXCLUDED_CATEGORIES = {"Aniversários", "Falecidos"}
+EXCLUDED_TITLE_PREFIXES = ("falecidos nas ",)
 MAX_WORD_VECTORS = 5000
 
 
@@ -46,7 +47,8 @@ def export():
             raise RuntimeError(f"Indice {kind} desatualizado. Regenere-o antes da exportacao.")
 
     categories = source["category"].fillna("").str.split(",").str[0].str.strip()
-    selected = np.flatnonzero(~categories.isin(EXCLUDED_CATEGORIES).to_numpy())
+    excluded_by_title = source["title"].fillna("").str.strip().str.casefold().str.startswith(EXCLUDED_TITLE_PREFIXES)
+    selected = np.flatnonzero((~categories.isin(EXCLUDED_CATEGORIES) & ~excluded_by_title).to_numpy())
     documents = []
     for original_id in selected:
         row = source.iloc[int(original_id)]

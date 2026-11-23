@@ -4,9 +4,12 @@ import json
 from collections import Counter
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 
-from representacao_textual import calcular_hash_base
+from representacao_textual import calcular_hash_base, carregar_embeddings_csv
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +52,20 @@ def export():
             for position, (_, row) in enumerate(frame.iloc[selected].iterrows())
         ]
 
+    embeddings = carregar_embeddings_csv(PROCESSED / "embeddings_word2vec.csv")
+    if len(embeddings) != len(source):
+        raise RuntimeError("Embeddings Word2Vec nao correspondem ao acervo.")
+    public_vectors = np.asarray(embeddings[selected], dtype=np.float32)
+    public_labels = KMeans(n_clusters=10, random_state=42, n_init=10).fit_predict(public_vectors)
+    public_categories = [item["category"] for item in catalog["documents"]]
+    public_purity = sum(
+        Counter(public_categories[position] for position in np.flatnonzero(public_labels == group)).most_common(1)[0][1]
+        for group in range(10)
+    ) / len(selected)
+    public_points = points(word2vec)
+    for point, label in zip(public_points, public_labels):
+        point[2] = int(label)
+
     counts = Counter(item["category"] for item in catalog["documents"])
     data = {
         "snapshot_date": catalog["snapshot_date"],
@@ -71,6 +88,14 @@ def export():
             ),
             "pca_variance": w2v_meta["pca_explained_variance"][:2],
             "points": points(word2vec),
+        },
+        "word2vec_public_10": {
+            "clusters": 10,
+            "silhouette": round(float(silhouette_score(public_vectors, public_labels, metric="cosine")), 6),
+            "purity": round(public_purity, 6),
+            "minimum_cluster_size": int(np.bincount(public_labels).min()),
+            "pca_variance": w2v_meta["pca_explained_variance"][:2],
+            "points": public_points,
         },
     }
     OUTPUT.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")

@@ -102,14 +102,14 @@
         <p id="model-results-intro">Carregando as métricas e os gráficos do acervo...</p>
         <div class="current-metrics">
           <div><strong id="metric-public">—</strong><span>notícias disponíveis na busca</span></div>
-          <div><strong id="metric-tfidf">—</strong><span>silhouette dos grupos TF-IDF</span></div>
-          <div><strong id="metric-word2vec">—</strong><span>silhouette dos grupos Word2Vec</span></div>
+          <div><strong id="metric-tfidf">—</strong><span>silhouette TF-IDF · 12 grupos na base válida</span></div>
+          <div><strong id="metric-word2vec">—</strong><span>silhouette Word2Vec · 12 grupos na base válida</span></div>
         </div>
-        <p class="chart-explanation">Silhouette mede a separação dos grupos: valores mais altos indicam grupos mais distintos. O agrupamento usa todas as notícias válidas, inclusive as categorias retiradas da demonstração pública. Essas métricas descrevem agrupamento, não a precisão da busca.</p>
+        <p class="chart-explanation">Silhouette mede a separação dos grupos: valores mais altos indicam grupos mais distintos. As métricas principais usam todas as notícias válidas; a opção Word2Vec com 10 grupos reagrupa apenas as notícias públicas. Essas métricas descrevem agrupamento, não a precisão da busca.</p>
         <p id="current-purity" class="chart-explanation"></p>
         <div class="chart-grid">
           <figure class="chart-card cluster-card">
-            <div class="chart-heading"><div><h3>Mapa dos agrupamentos</h3><p>Cada ponto é uma notícia; cores indicam grupos formados automaticamente.</p></div><label for="cluster-method">Representação<select id="cluster-method"><option value="tfidf">TF-IDF</option><option value="word2vec">Word2Vec</option></select></label></div>
+            <div class="chart-heading"><div><h3>Mapa dos agrupamentos</h3><p>Cada ponto é uma notícia; cores indicam grupos formados automaticamente.</p></div><label for="cluster-method">Representação<select id="cluster-method"><option value="word2vec_public_10" selected>Word2Vec · 10 grupos públicos</option><option value="word2vec">Word2Vec · 12 grupos originais</option><option value="tfidf">TF-IDF · 12 grupos originais</option></select></label></div>
             <svg id="cluster-chart" viewBox="0 0 900 440" role="img" aria-label="Dispersão PCA dos grupos de notícias"></svg>
             <div id="cluster-legend" class="cluster-legend" aria-label="Cores dos grupos"></div>
             <figcaption id="cluster-caption">Projeção PCA em duas dimensões.</figcaption>
