@@ -8,6 +8,7 @@ import re
 import secrets
 import smtplib
 import threading
+import time
 from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
@@ -304,19 +305,23 @@ def generate_report(area, selection):
         "a aplicação formata o e-mail e acrescenta os links.\n\n"
         + _source_text(selection["articles"])
     )
-    try:
-        response = requests.post(
-            "https://generativelanguage.googleapis.com/v1beta/interactions",
-            headers={"x-goog-api-key": key, "Api-Revision": "2026-05-20"},
-            json={"model": model, "input": prompt, "store": False,
-                  "response_format": {"type": "text", "mime_type": "application/json", "schema": REPORT_SCHEMA},
-                  "generation_config": {"max_output_tokens": 1200}},
-            timeout=(5, 30),
-        )
-    except requests.RequestException as error:
-        raise RuntimeError("Não foi possível conectar ao Gemini. Tente novamente.") from error
+    for attempt in range(3):
+        try:
+            response = requests.post(
+                "https://generativelanguage.googleapis.com/v1beta/interactions",
+                headers={"x-goog-api-key": key, "Api-Revision": "2026-05-20"},
+                json={"model": model, "input": prompt, "store": False,
+                      "response_format": {"type": "text", "mime_type": "application/json", "schema": REPORT_SCHEMA},
+                      "generation_config": {"max_output_tokens": 1200}},
+                timeout=(5, 30),
+            )
+        except requests.RequestException as error:
+            raise RuntimeError("Não foi possível conectar ao Gemini. Tente novamente.") from error
+        if response.status_code != 503 or attempt == 2:
+            break
+        time.sleep(2 ** attempt)
     if response.status_code == 503:
-        raise RuntimeError("O Gemini está temporariamente indisponível. Tente novamente mais tarde.")
+        raise RuntimeError("O modelo Gemini está temporariamente sobrecarregado (HTTP 503). Três tentativas falharam; tente novamente mais tarde.")
     if response.status_code in (401, 403):
         raise RuntimeError("Não foi possível gerar o relatório nesta instalação.")
     if not response.ok:

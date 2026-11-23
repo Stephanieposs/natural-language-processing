@@ -43,16 +43,22 @@ def test_evento_nao_seleciona_mencao_lateral(tmp_path, monkeypatch):
 
 def test_gemini_recebe_apenas_fontes_e_devolve_links(monkeypatch):
     calls = {}
+    attempts = []
+    delays = []
 
     def fake_post(url, **kwargs):
+        attempts.append(url)
         calls.update(kwargs)
         assert url == "https://generativelanguage.googleapis.com/v1beta/interactions"
+        if len(attempts) < 3:
+            return SimpleNamespace(status_code=503, ok=False)
         output = {"resumo": "Houve chuva na cidade.", "destaques": [
             {"titulo": "Chuva em Blumenau", "texto": "A notícia informa chuva na cidade.", "fontes": [1]}],
             "observacao": "Confira a fonte original."}
         return SimpleNamespace(status_code=200, ok=True, json=lambda: {"steps": [{"type": "model_output", "content": [{"type": "text", "text": json.dumps(output)}]}]})
 
     monkeypatch.setattr(agent.requests, "post", fake_post)
+    monkeypatch.setattr(agent.time, "sleep", delays.append)
     monkeypatch.setattr(agent, "settings", lambda: {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": "gemini-3.8-flash"})
     article = {"title": "Chuva em Blumenau", "date": "2026-11-16", "category": "Tempo", "url": "https://example.com/chuva"}
     report = agent.generate_report("chuva", {"articles": [article], "start": "2026-11-16", "end": "2026-11-16"})
@@ -63,13 +69,16 @@ def test_gemini_recebe_apenas_fontes_e_devolve_links(monkeypatch):
     assert "Houve chuva" in agent.render_report_text(report)
     assert "https://example.com/chuva" in agent.render_report_html(report)
     assert report["highlights"][0]["sources"] == [1]
+    assert len(attempts) == 3
+    assert delays == [1, 2]
 
 
 def test_gemini_indisponivel_falha_sem_envio(monkeypatch):
     monkeypatch.setattr(agent, "settings", lambda: {"GEMINI_API_KEY": "test-key", "GEMINI_MODEL": "gemini-3.1-flash-lite"})
     monkeypatch.setattr(agent.requests, "post", lambda *args, **kwargs: SimpleNamespace(status_code=503, ok=False))
+    monkeypatch.setattr(agent.time, "sleep", lambda _: None)
     selection = {"articles": [{"title": "Chuva", "date": "2026-11-16", "category": "Tempo", "url": "https://example.com/chuva"}], "start": "2026-11-16", "end": "2026-11-16"}
-    with pytest.raises(RuntimeError, match="temporariamente indisponível"):
+    with pytest.raises(RuntimeError, match="temporariamente sobrecarregado"):
         agent.generate_report("chuva", selection)
 
 

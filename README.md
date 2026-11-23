@@ -155,7 +155,9 @@ O Gemini e acessado pela API REST Interactions do Google; o custo e a
 disponibilidade dependem da cota e do plano associados a chave. Consulte a
 [documentacao oficial do Gemini](https://ai.google.dev/gemini-api/docs/get-started)
 para configurar o acesso. A aplicacao nao envia e-mail nem faz chamada ao
-Gemini enquanto as respectivas opcoes nao forem usadas ou agendadas.
+Gemini enquanto as respectivas opcoes nao forem usadas ou agendadas. Em caso
+de HTTP 503, o servidor faz ate tres tentativas com espera crescente; se o
+modelo continuar sobrecarregado, a previa precisa ser solicitada mais tarde.
 
 ### Acervo da demonstracao
 
