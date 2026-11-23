@@ -11,6 +11,7 @@ o processamento; as tarefas de PLN ficam em modulos separados.
 ## Indice
 
 - [Como rodar a aplicacao](#como-rodar-a-aplicacao)
+- [Publicar a demonstracao no Vercel](#publicar-a-demonstracao-no-vercel)
 - [Requisitos da entrega](#requisitos-da-entrega)
 - [Resumo e grafico 2D](#resumo-para-apresentacao)
 - [Aplicacao web e agente](#aplicacao-web-versao-de-demonstracao)
@@ -35,6 +36,16 @@ instaladas, execute apenas `python web_server.py`. A busca e os graficos
 funcionam com os dados incluidos no repositorio. Para gerar relatorios ou
 enviar e-mails na aba Agente, consulte a [configuracao local](#agente-local-de-noticias).
 Os comandos de coleta e treinamento estao em [Execucao](#execucao).
+
+## Publicar a demonstracao no Vercel
+
+O `vercel.json` na raiz configura o projeto como site estatico, sem comando de
+build, servindo somente a pasta `web/`. Ao importar este repositorio no
+Vercel, mantenha a raiz do repositorio como **Root Directory** e faca um novo
+deploy apos enviar o commit. As abas Buscar, No acervo e Resultados funcionam
+com os arquivos incluidos em `web/data/`. A aba Agente requer o servidor
+Python local e nao executa no deploy estatico; o proprio site informa essa
+limitacao. Nao cadastre chaves ou senhas no frontend.
 
 ## Requisitos da entrega
 
