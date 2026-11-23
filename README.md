@@ -3,6 +3,11 @@
 Autores: Stephanie Possamai, Cristian Monster, Beatriz Mariah, Beatriz Conrat
 e Julia Welter.
 
+O projeto coleta e organiza noticias publicas de Blumenau e regiao do Blog do
+Jaime. Cada registro preserva titulo, conteudo, categoria, data e URL para
+analise textual, agrupamento, busca e classificacao. `projeto_pln.py` organiza
+o processamento; as tarefas de PLN ficam em modulos separados.
+
 ## Resumo para apresentacao
 
 | Aspecto | Resultado nesta versao |
@@ -279,21 +284,9 @@ e porcentagem de relevancia nem uma media das similaridades.
 
 ### Uso auxiliar de IA generativa nesta etapa
 
-OpenAI Codex (GPT-6) auxiliou na implementacao e revisao da interface, dos
-graficos, do servidor local, dos exportadores, dos coletores e desta
-documentacao. Os pedidos principais foram criar uma busca comparativa e
-hibrida a partir dos indices existentes, ampliar a base, separar as abas e
-permitir atualizacoes por data ou quantidade, alem de integrar a busca ao
-agente e formatar o relatorio em e-mail HTML. A busca convencional nao chama
-modelo generativo; a aba Agente usa Gemini quando a chave esta configurada.
-
-Projeto de PLN para coletar e organizar noticias publicas de Blumenau e regiao
-do Blog do Jaime. Cada registro preserva titulo, conteudo, categoria, data e
-URL, formando uma base atualizavel e rastreavel para limpeza textual, analise
-exploratoria, agrupamento, busca e classificacao. O corpus reune assuntos locais
-variados e desafios reais, como noticias relacionadas ao mesmo acontecimento e
-nomes de bairros e instituicoes. `projeto_pln.py` orquestra o fluxo; as
-representacoes e tarefas de PLN ficam em modulos separados.
+ChatGPT (OpenAI, GPT-6) foi utilizado como auxiliar na programacao e na
+documentacao. O agente usa Gemini para gerar os relatorios, conforme descrito
+acima.
 
 ## Instalacao
 
