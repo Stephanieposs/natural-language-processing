@@ -8,6 +8,46 @@ Jaime. Cada registro preserva titulo, conteudo, categoria, data e URL para
 analise textual, agrupamento, busca e classificacao. `projeto_pln.py` organiza
 o processamento; as tarefas de PLN ficam em modulos separados.
 
+## Indice
+
+- [Como rodar a aplicacao](#como-rodar-a-aplicacao)
+- [Requisitos da entrega](#requisitos-da-entrega)
+- [Resumo e grafico 2D](#resumo-para-apresentacao)
+- [Aplicacao web e agente](#aplicacao-web-versao-de-demonstracao)
+- [Dados e atualizacao do acervo](#acervo-da-demonstracao)
+- [Tecnicas avancadas de PLN](#tecnicas-da-unidade-4)
+- [Avaliacao, resultados e limitacoes](#avaliacao-e-interpretacao)
+- [Instalacao e execucao do pipeline completo](#instalacao)
+- [Uso auxiliar de IA](#uso-auxiliar-de-ia-generativa-nesta-etapa)
+
+## Como rodar a aplicacao
+
+No Windows PowerShell, na pasta do projeto:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python web_server.py
+```
+
+Abra `http://127.0.0.1:8765/` no navegador. Se as dependencias ja estiverem
+instaladas, execute apenas `python web_server.py`. A busca e os graficos
+funcionam com os dados incluidos no repositorio. Para gerar relatorios ou
+enviar e-mails na aba Agente, consulte a [configuracao local](#agente-local-de-noticias).
+Os comandos de coleta e treinamento estao em [Execucao](#execucao).
+
+## Requisitos da entrega
+
+| Requisito | Onde consultar |
+|---|---|
+| Pagina funcional, exemplos de busca e resultados | [Aplicacao web](#aplicacao-web-versao-de-demonstracao) e aba **Buscar** do site |
+| Dados, metodologia, tecnologias e limitacoes | [Acervo](#acervo-da-demonstracao), [tecnicas](#tecnicas-da-unidade-4) e [avaliacao](#avaliacao-e-interpretacao) |
+| Abordagem avancada de PLN | [Agente local](#agente-local-de-noticias) e [quadro da Unidade 4](#tecnicas-da-unidade-4) |
+| Testes e interpretacao dos resultados | [Avaliacao](#avaliacao-e-interpretacao) e [grafico 2D](#visualizacao-2d-dos-clusters) |
+| Instrucoes de uso e codigo | [Como rodar](#como-rodar-a-aplicacao), [instalacao](#instalacao) e arquivos deste repositorio |
+| Link publico da aplicacao | Ainda pendente; a demonstracao local funciona com o comando acima |
+
 ## Resumo para apresentacao
 
 | Aspecto | Resultado nesta versao |
@@ -52,14 +92,8 @@ ao lado do seletor muda entre Hibrida, TF-IDF, Word2Vec e Comparar. A busca
 roda no navegador, sem conta ou chave externa. O link publico ainda nao foi
 configurado.
 
-Para visualizar localmente, na raiz do repositorio (com as dependencias
-instaladas):
-
-```powershell
-python web_server.py
-```
-
-Abra `http://127.0.0.1:8765/`. A aba "Atualizacoes e alertas" e informativa:
+Para abrir a demonstracao local, siga [Como rodar a aplicacao](#como-rodar-a-aplicacao).
+A aba "Atualizacoes e alertas" e informativa:
 a interface publica nao oferece botoes para executar coleta, agendamento ou
 notificacoes. O servidor local conserva as rotinas de atualizacao. Para
 hospedar a busca, o acervo e os resultados sem servidor Python, basta servir
